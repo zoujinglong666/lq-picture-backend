@@ -1,0 +1,50 @@
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+
+
+spring:
+  application:
+    name: lq-picture-backend
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/lq_picture?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC
+    username: root
+    password: 12345678
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  session:
+    timeout: 86400
+    store-type: redis
+
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: false  # 自动将user_account映射到userAccount
+    # 开发环境使用console输出sql语句
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: isDelete  # 全局逻辑删除字段值
+      logic-delete-value: 1  # 逻辑已删除值(默认为 1)
+      logic-not-delete-value: 0  # 逻辑未删除值(默认为 0)
+
+
+knife4j:
+  enable: true
+  openapi:
+    title: lq-picture-backend API
+    version: 1.0.0
+    license: Apache 2.0
+    license-url: https://stackoverflow.com/
+    terms-of-service-url: https://stackoverflow.com/
+    group:
+      default:
+        api-rule: package
+        api-rule-resources:
+          - com.zjl.lqpicturebackend.controller
+
