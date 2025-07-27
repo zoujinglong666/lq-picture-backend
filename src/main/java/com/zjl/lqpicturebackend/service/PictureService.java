@@ -6,6 +6,7 @@ import com.zjl.lqpicturebackend.model.Picture;
 import com.zjl.lqpicturebackend.model.User;
 import com.zjl.lqpicturebackend.model.dto.picture.PictureEditRequest;
 import com.zjl.lqpicturebackend.model.dto.picture.PictureQueryRequest;
+import com.zjl.lqpicturebackend.model.dto.picture.PictureReviewRequest;
 import com.zjl.lqpicturebackend.model.dto.picture.PictureUploadRequest;
 import com.zjl.lqpicturebackend.model.vo.PictureVO;
 import org.springframework.web.multipart.MultipartFile;
@@ -39,4 +40,12 @@ public interface PictureService extends IService<Picture> {
     void editPicture(PictureEditRequest pictureEditRequest, User loginUser);
 
     PictureVO getPictureVO(Picture picture, HttpServletRequest request);
+
+
+    void doPictureReview(PictureReviewRequest pictureReviewRequest, User loginUser);
+
+
+
+
+
 }

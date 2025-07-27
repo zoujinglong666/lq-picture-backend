@@ -1,5 +1,6 @@
 package com.zjl.lqpicturebackend.controller;
 
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zjl.lqpicturebackend.annotation.AuthCheck;
 import com.zjl.lqpicturebackend.common.BaseResponse;
@@ -11,15 +12,14 @@ import com.zjl.lqpicturebackend.exception.BusinessException;
 import com.zjl.lqpicturebackend.exception.ThrowUtils;
 import com.zjl.lqpicturebackend.model.Picture;
 import com.zjl.lqpicturebackend.model.User;
-import com.zjl.lqpicturebackend.model.dto.picture.PictureEditRequest;
-import com.zjl.lqpicturebackend.model.dto.picture.PictureQueryRequest;
-import com.zjl.lqpicturebackend.model.dto.picture.PictureUploadRequest;
+import com.zjl.lqpicturebackend.model.dto.picture.*;
 import com.zjl.lqpicturebackend.model.enums.PictureReviewStatusEnum;
 import com.zjl.lqpicturebackend.model.vo.PictureTagCategory;
 import com.zjl.lqpicturebackend.model.vo.PictureVO;
 import com.zjl.lqpicturebackend.service.PictureService;
 import com.zjl.lqpicturebackend.service.UserService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -42,7 +42,6 @@ public class PictureController {
     private PictureService pictureService;
 
     @PostMapping("/upload")
-//    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<PictureVO> uploadPicture(@RequestPart("file") MultipartFile multipartFile, PictureUploadRequest pictureUploadRequest, HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         PictureVO pictureVO = pictureService.uploadPicture(multipartFile, pictureUploadRequest, loginUser);
@@ -67,7 +66,7 @@ public class PictureController {
 
 
     @PostMapping("/list/page")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+//    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Page<Picture>> listPictureByPage(@RequestBody PictureQueryRequest pictureQueryRequest) {
         long current = pictureQueryRequest.getCurrent();
         long size = pictureQueryRequest.getPageSize();
@@ -131,6 +130,44 @@ public class PictureController {
         // 获取封装类
         return ResultUtils.success(pictureVO);
     }
+    @PostMapping("/review")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    public BaseResponse<Boolean> doPictureReview(@RequestBody PictureReviewRequest pictureReviewRequest, HttpServletRequest request) {
+        if (pictureReviewRequest == null || pictureReviewRequest.getId() <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(request);
+        pictureService.doPictureReview(pictureReviewRequest, loginUser);
+        return ResultUtils.success(true);
+    }
+
+    @PostMapping("/update")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    public BaseResponse<Boolean> updatePicture(@RequestBody PictureUpdateRequest pictureUpdateRequest,
+                                               HttpServletRequest request) {
+        if (pictureUpdateRequest == null || pictureUpdateRequest.getId() <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 将实体类和 DTO 进行转换
+        Picture picture = new Picture();
+        BeanUtils.copyProperties(pictureUpdateRequest, picture);
+        // 注意将 list 转为 string
+        picture.setTags(JSONUtil.toJsonStr(pictureUpdateRequest.getTags()));
+        // 数据校验
+        pictureService.validPicture(picture);
+        // 判断是否存在
+        long id = pictureUpdateRequest.getId();
+        Picture oldPicture = pictureService.getById(id);
+        ThrowUtils.throwIf(oldPicture == null, ErrorCode.NOT_FOUND_ERROR);
+        // 补充审核参数
+        User loginUser = userService.getLoginUser(request);
+        pictureService.fillReviewParams(oldPicture, loginUser);
+        // 操作数据库
+        boolean result = pictureService.updateById(picture);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        return ResultUtils.success(true);
+    }
+
 
 
 

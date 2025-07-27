@@ -6,6 +6,7 @@ import com.zjl.lqpicturebackend.annotation.AuthCheck;
 import com.zjl.lqpicturebackend.common.BaseResponse;
 import com.zjl.lqpicturebackend.common.ErrorCode;
 import com.zjl.lqpicturebackend.common.ResultUtils;
+import com.zjl.lqpicturebackend.constant.UserConstant;
 import com.zjl.lqpicturebackend.exception.BusinessException;
 import com.zjl.lqpicturebackend.exception.ThrowUtils;
 import com.zjl.lqpicturebackend.model.User;
@@ -88,7 +89,7 @@ public class UserController {
 
 
     @GetMapping("/list")
-    @AuthCheck(mustRole = "admin")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Page<UserVO>> listUser(UserQueryRequest userQueryRequest,HttpServletRequest request) {
         // 校验参数是否为空
 

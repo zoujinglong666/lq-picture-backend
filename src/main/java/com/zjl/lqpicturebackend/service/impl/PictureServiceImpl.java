@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.zjl.lqpicturebackend.common.ErrorCode;
+import com.zjl.lqpicturebackend.constant.UserConstant;
 import com.zjl.lqpicturebackend.exception.BusinessException;
 import com.zjl.lqpicturebackend.exception.ThrowUtils;
 import com.zjl.lqpicturebackend.manager.FileManager;
@@ -17,6 +18,7 @@ import com.zjl.lqpicturebackend.model.User;
 import com.zjl.lqpicturebackend.model.dto.file.UploadPictureResult;
 import com.zjl.lqpicturebackend.model.dto.picture.PictureEditRequest;
 import com.zjl.lqpicturebackend.model.dto.picture.PictureQueryRequest;
+import com.zjl.lqpicturebackend.model.dto.picture.PictureReviewRequest;
 import com.zjl.lqpicturebackend.model.dto.picture.PictureUploadRequest;
 import com.zjl.lqpicturebackend.model.enums.PictureReviewStatusEnum;
 import com.zjl.lqpicturebackend.model.vo.PictureVO;
@@ -60,14 +62,15 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
         }
         Long pictureId = pictureUploadRequest.getId();
         if (pictureId != null) {
-            boolean exists = this.lambdaQuery().eq(Picture::getId, pictureId).exists();
-            ThrowUtils.throwIf(!exists, ErrorCode.NOT_FOUND_ERROR, "图片不存在");
+//            boolean exists = this.lambdaQuery().eq(Picture::getId, pictureId).exists();
+//            ThrowUtils.throwIf(!exists, ErrorCode.NOT_FOUND_ERROR, "图片不存在");
 
 
+            Picture oldPicture = this.getById(pictureId);
+            ThrowUtils.throwIf(oldPicture == null, ErrorCode.NOT_FOUND_ERROR, "图片不存在");
+            ThrowUtils.throwIf((!loginUser.getId().equals(oldPicture.getUserId())||!loginUser.getUserRole().equals(UserConstant.ADMIN_ROLE)), ErrorCode.NO_AUTH_ERROR, "无权限修改图片");
         }
 //        上传图片 得到文件信息 保存到数据库
-
-
         String uploadPathPrefix = String.format("/pictures/%s/", loginUser.getId());
         UploadPictureResult uploadPictureResult = fileManager.uploadPicture(multipartFile, uploadPathPrefix);
         Picture picture = new Picture();
@@ -79,7 +82,8 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
         picture.setPicFormat(uploadPictureResult.getPicFormat());
         picture.setUserId(loginUser.getId());
         picture.setUrl(uploadPictureResult.getUrl());
-
+        // 补充审核参数
+        this.fillReviewParams(picture, loginUser);
 
         if (pictureId != null) {
             picture.setId(pictureId);
@@ -215,7 +219,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
             ThrowUtils.throwIf(url.length() > 1024, ErrorCode.PARAMS_ERROR, "url 过长");
         }
         if (StrUtil.isNotBlank(introduction)) {
-            ThrowUtils.throwIf(introduction.length() > 800, ErrorCode.PARAMS_ERROR, "简介过长");
+            ThrowUtils.throwIf(introduction.length() > 800, ErrorCode.PARAMS_ERROR, "图片简介过长");
         }
     }
     @Override
@@ -265,6 +269,49 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
             pictureVO.setUser(userVO);
         }
         return pictureVO;
+    }
+
+
+    @Override
+    public void doPictureReview(PictureReviewRequest pictureReviewRequest, User loginUser) {
+
+
+        if(loginUser == null){
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "用户未登录");
+        }
+        Long id = pictureReviewRequest.getId();
+        Integer reviewStatus = pictureReviewRequest.getReviewStatus();
+
+        if(id == null){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "图片id不能为空");
+        }
+
+        if(pictureReviewRequest.getReviewStatus() == null){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "审核状态不能为空");
+        }
+
+        // 校验审核状态
+        PictureReviewStatusEnum reviewStatusEnum = PictureReviewStatusEnum.getEnumByValue(pictureReviewRequest.getReviewStatus());
+        ThrowUtils.throwIf(reviewStatusEnum == null, ErrorCode.PARAMS_ERROR, "审核状态不正确");
+
+
+        Picture oldPicture = this.getById(id);
+        ThrowUtils.throwIf(oldPicture == null, ErrorCode.NOT_FOUND_ERROR, "图片不存在");
+
+        if(oldPicture.getReviewStatus().equals(reviewStatus)){
+           throw new BusinessException(ErrorCode.OPERATION_ERROR, "审核状态未改变，不做操作");
+        }
+        Picture  updatePicture = new Picture();
+        updatePicture.setId(id);
+        updatePicture.setReviewStatus(reviewStatusEnum.getValue());
+        updatePicture.setReviewerId(loginUser.getId());
+        updatePicture.setReviewMessage(pictureReviewRequest.getReviewMessage());
+        updatePicture.setReviewTime(new Date());
+        boolean result = this.updateById(updatePicture);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "审核失败");
+
+
+
     }
 }
 

@@ -5,6 +5,8 @@ import lombok.Getter;
 
 /**
  * 图片审核状态枚举类
+ * @author zou
+
  */
 @Getter
 public enum PictureReviewStatusEnum {
