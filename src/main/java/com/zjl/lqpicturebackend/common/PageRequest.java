@@ -2,14 +2,13 @@ package com.zjl.lqpicturebackend.common;
 
 import com.zjl.lqpicturebackend.constant.CommonConstant;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * 分页请求
- *
- * @author <a href="https://github.com/liyupi">程序员鱼皮</a>
- * @from <a href="https://yupi.icu">编程导航知识星球</a>
  */
 @Data
+@NoArgsConstructor  // ✅ 补上无参构造
 public class PageRequest {
 
     /**

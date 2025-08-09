@@ -4,12 +4,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.zjl.lqpicturebackend.model.Picture;
 import com.zjl.lqpicturebackend.model.User;
-import com.zjl.lqpicturebackend.model.dto.picture.PictureEditRequest;
-import com.zjl.lqpicturebackend.model.dto.picture.PictureQueryRequest;
-import com.zjl.lqpicturebackend.model.dto.picture.PictureReviewRequest;
-import com.zjl.lqpicturebackend.model.dto.picture.PictureUploadRequest;
+import com.zjl.lqpicturebackend.model.dto.picture.*;
 import com.zjl.lqpicturebackend.model.vo.PictureVO;
-import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -21,7 +17,16 @@ import javax.servlet.http.HttpServletRequest;
  */
 public interface PictureService extends IService<Picture> {
 
-    PictureVO uploadPicture(MultipartFile multipartFile, PictureUploadRequest pictureUploadRequest, User loginUser);
+    PictureVO uploadPicture(Object source, PictureUploadRequest pictureUploadRequest, User loginUser);
+
+    void deletePicture(long pictureId, User loginUser);
+
+    /**
+     * 检查图片权限
+     * @param loginUser
+     * @param oldPicture
+     */
+    void checkPictureAuth(User loginUser, Picture oldPicture);
 
     QueryWrapper<Picture> getQueryWrapper(PictureQueryRequest pictureQueryRequest);
 
@@ -39,13 +44,11 @@ public interface PictureService extends IService<Picture> {
 
     void editPicture(PictureEditRequest pictureEditRequest, User loginUser);
 
-    PictureVO getPictureVO(Picture picture, HttpServletRequest request);
+    PictureVO getPictureVO(Picture picture, User loginUser);
 
 
     void doPictureReview(PictureReviewRequest pictureReviewRequest, User loginUser);
 
 
-
-
-
+    Integer uploadPictureByBatch(PictureUploadByBatchRequest pictureUploadByBatchRequest, User loginUser);
 }
