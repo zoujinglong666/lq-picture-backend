@@ -75,4 +75,28 @@ public interface UserService extends IService<User> {
      */
     boolean isAdmin(User user);
 
+    /**
+     * 发送邮箱验证码
+     * @param email 邮箱地址
+     * @return 是否发送成功
+     */
+    boolean sendEmailCode(String email);
+
+    /**
+     * 验证邮箱验证码
+     * @param email 邮箱地址
+     * @param code 验证码
+     * @return 是否验证成功
+     */
+    boolean verifyEmailCode(String email, String code);
+
+    /**
+     * 邮箱登录
+     * @param email 邮箱地址
+     * @param code 验证码
+     * @param request HTTP请求
+     * @return 登录用户信息
+     */
+    LoginUserVO emailLogin(String email, String code, HttpServletRequest request);
+
 }

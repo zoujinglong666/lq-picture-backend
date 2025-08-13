@@ -223,30 +223,18 @@ public class PictureController {
     @GetMapping("/get/vo")
     public BaseResponse<PictureVO> getPictureVOById(long id, HttpServletRequest request) {
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
+        
+        // 必须登录才能查看图片详情
+        User loginUser = userService.getLoginUser(request);
+        
         // 查询数据库
         Picture picture = pictureService.getById(id);
         ThrowUtils.throwIf(picture == null, ErrorCode.NOT_FOUND_ERROR);
 
-        // 获取登录用户（可能为null）
-        User loginUser = null;
-        try {
-            // 尝试获取登录用户，如果未登录则为null
-            if (StpUtil.isLogin()) {
-                loginUser = userService.getLoginUser(request);
-            }
-        } catch (Exception e) {
-            // 忽略登录验证异常，允许未登录用户查看公开图片
-            log.debug("用户未登录，以游客身份访问图片", e);
-        }
-
         // 检查图片权限
         Long spaceId = picture.getSpaceId();
         if (spaceId != null) {
-            // 私有空间图片，必须登录且有权限
-            if (loginUser == null) {
-                throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "访问私有图片需要登录");
-            }
-            // 校验图片权限
+            // 私有空间图片，校验图片权限
             pictureService.checkPictureAuth(loginUser, picture);
         }
         

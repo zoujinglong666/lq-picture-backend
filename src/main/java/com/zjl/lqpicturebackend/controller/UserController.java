@@ -14,6 +14,8 @@ import com.zjl.lqpicturebackend.model.dto.user.UserLoginRequest;
 import com.zjl.lqpicturebackend.model.dto.user.UserQueryRequest;
 import com.zjl.lqpicturebackend.model.dto.user.UserRegisterRequest;
 import com.zjl.lqpicturebackend.model.dto.user.UserUpdateRequest;
+import com.zjl.lqpicturebackend.model.dto.user.UserEmailLoginRequest;
+import com.zjl.lqpicturebackend.model.dto.user.UserSendCodeRequest;
 import com.zjl.lqpicturebackend.model.vo.LoginUserVO;
 import com.zjl.lqpicturebackend.model.vo.UserVO;
 import com.zjl.lqpicturebackend.service.UserService;
@@ -85,6 +87,46 @@ public class UserController {
         }
         int result = userService.userLogout(request);
         return ResultUtils.success(result);
+    }
+
+    /**
+     * 发送邮箱验证码
+     *
+     * @param userSendCodeRequest
+     * @return
+     */
+    @PostMapping("/send-email-code")
+    public BaseResponse<Boolean> sendEmailCode(@RequestBody UserSendCodeRequest userSendCodeRequest) {
+        if (userSendCodeRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        String email = userSendCodeRequest.getEmail();
+        if (StrUtil.isBlank(email)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱不能为空");
+        }
+        boolean result = userService.sendEmailCode(email);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 邮箱登录
+     *
+     * @param userEmailLoginRequest
+     * @param request
+     * @return
+     */
+    @PostMapping("/email-login")
+    public BaseResponse<LoginUserVO> emailLogin(@RequestBody UserEmailLoginRequest userEmailLoginRequest, HttpServletRequest request) {
+        if (userEmailLoginRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        String email = userEmailLoginRequest.getEmail();
+        String code = userEmailLoginRequest.getCode();
+        if (StrUtil.hasBlank(email, code)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱或验证码不能为空");
+        }
+        LoginUserVO loginUserVO = userService.emailLogin(email, code, request);
+        return ResultUtils.success(loginUserVO);
     }
 
 

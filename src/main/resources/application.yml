@@ -16,6 +16,22 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
+  # 邮件配置
+  mail:
+    host: smtp.qq.com  # QQ邮箱SMTP服务器
+    port: 587
+    username: 675350014@qq.com  # 发送方邮箱
+    password: zxoyuiwxubehbaje  # QQ邮箱授权码（不是登录密码）
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            trust: smtp.qq.com
 
 #  session:
 #    timeout: 86400
