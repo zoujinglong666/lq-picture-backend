@@ -109,6 +109,21 @@ public class PictureVO implements Serializable {
     private UserVO user;
 
     /**
+     * 点赞数
+     */
+    private Long likeCount;
+
+    /**
+     * 我是否已点赞
+     */
+    private Boolean hasLiked;
+
+    /**
+     * 评论总数
+     */
+    private Long commentCount;
+
+    /**
      * 权限列表
      */
     private List<String> permissionList = new ArrayList<>();
@@ -140,6 +155,10 @@ public class PictureVO implements Serializable {
         BeanUtils.copyProperties(picture, pictureVO);
         // 类型不同，需要转换
         pictureVO.setTags(JSONUtil.toList(picture.getTags(), String.class));
+        // 统计字段默认值，后续由 Service 补充
+        pictureVO.setLikeCount(0L);
+        pictureVO.setHasLiked(false);
+        pictureVO.setCommentCount(0L);
         return pictureVO;
     }
 }

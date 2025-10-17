@@ -26,6 +26,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 
 /**
@@ -172,18 +173,10 @@ public class UserController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "用户不存在");
         }
         // 只更新允许的字段
-        if(userUpdateRequest.getUserAccount() != null){
-            user.setUserAccount(userUpdateRequest.getUserAccount());
-        }
-        if(userUpdateRequest.getUserName() != null){
-            user.setUserName(userUpdateRequest.getUserName());
-        }
-        if(userUpdateRequest.getUserAvatar() != null){
-            user.setUserAvatar(userUpdateRequest.getUserAvatar());
-        }
-        if(userUpdateRequest.getUserProfile() != null){
-            user.setUserProfile(userUpdateRequest.getUserProfile());
-        }
+        Optional.ofNullable(userUpdateRequest.getUserAccount()).ifPresent(user::setUserAccount);
+        Optional.ofNullable(userUpdateRequest.getUserName()).ifPresent(user::setUserName);
+        Optional.ofNullable(userUpdateRequest.getUserAvatar()).ifPresent(user::setUserAvatar);
+        Optional.ofNullable(userUpdateRequest.getUserProfile()).ifPresent(user::setUserProfile);
 
         user.setEditTime(new Date());
         boolean result = userService.updateById(user);

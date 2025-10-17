@@ -48,18 +48,12 @@ public class AuthInterceptor {
         if (mustRoleEnum == null) {
             return joinPoint.proceed();
         }
-
-
         User loginUser = userService.getLoginUser(request);
-
-
         UserRoleEnum userRoleEnum = UserRoleEnum.fromValue(loginUser.getUserRole());
 
         if (userRoleEnum == null) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
-
-
         if (!UserRoleEnum.ADMIN.equals(userRoleEnum) && UserRoleEnum.ADMIN.equals(mustRoleEnum)) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }

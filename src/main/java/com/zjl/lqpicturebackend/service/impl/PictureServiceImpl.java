@@ -16,7 +16,11 @@ import com.zjl.lqpicturebackend.manager.FileManager;
 import com.zjl.lqpicturebackend.manager.MultipartFileUploader;
 import com.zjl.lqpicturebackend.manager.UrlFileUploader;
 import com.zjl.lqpicturebackend.mapper.PictureMapper;
+import com.zjl.lqpicturebackend.mapper.PictureLikeMapper;
+import com.zjl.lqpicturebackend.mapper.PictureCommentMapper;
 import com.zjl.lqpicturebackend.model.Picture;
+import com.zjl.lqpicturebackend.model.PictureLike;
+import com.zjl.lqpicturebackend.model.PictureComment;
 import com.zjl.lqpicturebackend.model.Space;
 import com.zjl.lqpicturebackend.model.User;
 import com.zjl.lqpicturebackend.model.dto.file.UploadPictureResult;
@@ -27,6 +31,8 @@ import com.zjl.lqpicturebackend.model.vo.UserVO;
 import com.zjl.lqpicturebackend.service.PictureService;
 import com.zjl.lqpicturebackend.service.SpaceService;
 import com.zjl.lqpicturebackend.service.UserService;
+import com.zjl.lqpicturebackend.service.LikeService;
+import com.zjl.lqpicturebackend.service.CommentService;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -68,6 +74,18 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
 
     @Resource
     private UrlFileUploader urlFileUploader;
+
+    @Resource
+    private PictureLikeMapper pictureLikeMapper;
+
+    @Resource
+    private PictureCommentMapper pictureCommentMapper;
+
+    @Resource
+    private LikeService likeService;
+
+    @Resource
+    private CommentService commentService;
 
 
     @Resource
@@ -335,6 +353,58 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
             }
             pictureVO.setUser(userService.getUserVO(user));
         });
+        // 批量聚合点赞数、评论数，并计算当前用户的已点赞集合
+        java.util.Set<Long> pictureIdSet = pictureList.stream().map(Picture::getId).collect(java.util.stream.Collectors.toSet());
+
+        // 点赞数聚合
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureLike> likeQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        likeQw.select("pictureId", "COUNT(*) AS cnt")
+                .in("pictureId", pictureIdSet)
+                .eq("isDelete", 0)
+                .groupBy("pictureId");
+        java.util.Map<Long, Long> likeCountMap = new java.util.HashMap<>();
+        for (java.util.Map<String, Object> row : pictureLikeMapper.selectMaps(likeQw)) {
+            Long pid = ((Number) row.get("pictureId")).longValue();
+            Long cnt = ((Number) row.get("cnt")).longValue();
+            likeCountMap.put(pid, cnt);
+        }
+
+        // 评论数聚合
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureComment> commentQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        commentQw.select("pictureId", "COUNT(*) AS cnt")
+                .in("pictureId", pictureIdSet)
+                .eq("isDelete", 0)
+                .groupBy("pictureId");
+        java.util.Map<Long, Long> commentCountMap = new java.util.HashMap<>();
+        for (java.util.Map<String, Object> row : pictureCommentMapper.selectMaps(commentQw)) {
+            Long pid = ((Number) row.get("pictureId")).longValue();
+            Long cnt = ((Number) row.get("cnt")).longValue();
+            commentCountMap.put(pid, cnt);
+        }
+
+        // 当前用户的已点赞集合
+        java.util.Set<Long> likedSet = new java.util.HashSet<>();
+        try {
+            User curUser = userService.getLoginUser(request);
+            if (curUser != null) {
+                java.util.List<PictureLike> likedList = pictureLikeMapper.selectList(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<PictureLike>()
+                                .eq(PictureLike::getUserId, curUser.getId())
+                                .in(PictureLike::getPictureId, pictureIdSet)
+                                .eq(PictureLike::getIsDelete, 0)
+                );
+                likedSet = likedList.stream().map(PictureLike::getPictureId).collect(java.util.stream.Collectors.toSet());
+            }
+        } catch (Exception ignored) {}
+
+        // 批量填充到 VO
+        for (PictureVO vo : pictureVOList) {
+            Long pid = vo.getId();
+            vo.setLikeCount(likeCountMap.getOrDefault(pid, 0L));
+            vo.setCommentCount(commentCountMap.getOrDefault(pid, 0L));
+            vo.setHasLiked(likedSet.contains(pid));
+        }
+
         pictureVOPage.setRecords(pictureVOList);
         return pictureVOPage;
     }
@@ -405,6 +475,11 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
         User user = userService.getById(userId);
         UserVO userVO = userService.getUserVO(user);
         pictureVO.setUser(userVO);
+        // 统计字段（详情页补充）
+        Long pid = picture.getId();
+        pictureVO.setLikeCount(likeService.countByPictureId(pid));
+        pictureVO.setCommentCount(commentService.countByPictureId(pid));
+        pictureVO.setHasLiked(loginUser != null && likeService.hasLiked(pid, loginUser.getId()));
         return pictureVO;
     }
 
