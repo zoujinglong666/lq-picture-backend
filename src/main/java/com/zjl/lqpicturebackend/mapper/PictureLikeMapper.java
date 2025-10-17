@@ -6,11 +6,27 @@ import com.zjl.lqpicturebackend.model.PictureLike;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.Mapper;
 
 /**
  * Mapper for picture_like
  */
+@Mapper
 public interface PictureLikeMapper extends BaseMapper<PictureLike> {
+
+    /**
+     * 点赞：插入或恢复（依赖唯一索引 (picture_id, user_id)）
+     */
+    @Update("INSERT INTO picture_like(pictureId, userId, isDelete, createTime) " +
+            "VALUES(#{pictureId}, #{userId}, 0, NOW()) " +
+            "ON DUPLICATE KEY UPDATE isDelete = 0, createTime = NOW()")
+    int upsertLike(@Param("pictureId") Long pictureId, @Param("userId") Long userId);
+
+    /**
+     * 取消点赞：逻辑删除
+     */
+    @Update("UPDATE picture_like SET isDelete = 1 WHERE pictureId = #{pictureId} AND userId = #{userId}")
+    int cancelLike(@Param("pictureId") Long pictureId, @Param("userId") Long userId);
 
     /**
      * 查询包含已逻辑删除的记录（绕过逻辑删除拦截）
