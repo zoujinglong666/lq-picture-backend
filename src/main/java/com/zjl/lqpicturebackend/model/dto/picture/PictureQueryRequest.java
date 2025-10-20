@@ -105,6 +105,11 @@ public class PictureQueryRequest extends PageRequest implements Serializable {
      */
     private boolean nullSpaceId;
 
+    /**
+     * 是否只查询用户点赞的图片
+     */
+    private boolean likedByUser;
+
     /*
      * 开始编辑时间
      */

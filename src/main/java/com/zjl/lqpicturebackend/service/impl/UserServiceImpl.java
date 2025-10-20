@@ -29,6 +29,9 @@ import cn.dev33.satoken.stp.StpUtil;
 import javax.annotation.Resource;
 import javax.mail.internet.MimeMessage;
 import javax.servlet.http.HttpServletRequest;
+import org.springframework.web.multipart.MultipartFile;
+import com.zjl.lqpicturebackend.manager.MultipartFileUploader;
+import com.zjl.lqpicturebackend.model.dto.file.UploadPictureResult;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +56,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     
     @Value("${spring.mail.username}")
     private String fromEmail;
+
+    @Resource
+    private MultipartFileUploader multipartFileUploader;
 
 
 
@@ -113,7 +119,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         User userEntity = new User();
         userEntity.setUserAccount(userAccount);
         userEntity.setUserPassword(encryptPassword);
-        userEntity.setUserName("无名");
+        userEntity.setUserName("user_" + RandomUtil.randomString(8));
         userEntity.setUserRole(UserRoleEnum.USER.getValue());
 
         boolean save = this.save(userEntity);
@@ -371,6 +377,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         StpUtil.getTokenSession().set(USER_LOGIN_STATE, user);
         
         return this.getLoginUserVO(user);
+    }
+
+    @Override
+    public String uploadUserAvatar(MultipartFile file, User loginUser) {
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
+        }
+        String uploadPathPrefix = String.format("/avatar/%s/", loginUser.getId());
+        UploadPictureResult uploadResult = multipartFileUploader.upload(file, uploadPathPrefix);
+
+        User user = this.getById(loginUser.getId());
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "用户不存在");
+        }
+        user.setUserAvatar(uploadResult.getUrl());
+        boolean updated = this.updateById(user);
+        if (!updated) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "更新头像失败");
+        }
+        // 同步登录态中的用户信息
+        StpUtil.getTokenSession().set(USER_LOGIN_STATE, user);
+        return uploadResult.getUrl();
     }
     
     /**

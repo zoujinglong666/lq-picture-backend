@@ -8,5 +8,6 @@ import java.io.Serializable;
 public class CommentAddRequest implements Serializable {
     private String content;
     private Long parentId;
+    private Long pictureId;
     private static final long serialVersionUID = 1L;
 }

@@ -9,6 +9,7 @@ import com.zjl.lqpicturebackend.model.Picture;
 import com.zjl.lqpicturebackend.model.User;
 import com.zjl.lqpicturebackend.model.dto.comment.CommentAddRequest;
 import com.zjl.lqpicturebackend.model.dto.comment.CommentDeleteRequest;
+import com.zjl.lqpicturebackend.model.dto.comment.CommentQueryRequest;
 import com.zjl.lqpicturebackend.model.vo.CommentVO;
 import com.zjl.lqpicturebackend.service.CommentService;
 import com.zjl.lqpicturebackend.service.NotificationService;
@@ -32,10 +33,14 @@ public class CommentController {
     @Resource
     private NotificationService notificationService;
 
-    @PostMapping("/{pictureId}/add")
-    public BaseResponse<Long> add(@PathVariable Long pictureId, @RequestBody CommentAddRequest req, HttpServletRequest request) {
-        if (req == null) {
+    @PostMapping("/add")
+    public BaseResponse<Long> add( @RequestBody CommentAddRequest commentAddRequest, HttpServletRequest request) {
+        if (commentAddRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Long pictureId = commentAddRequest.getPictureId();
+        if (pictureId == null || pictureId <= 0){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "图片ID错误");
         }
         User loginUser = userService.getLoginUser(request);
         Picture picture = pictureService.getById(pictureId);
@@ -46,17 +51,31 @@ public class CommentController {
         if (picture.getSpaceId() != null) {
             pictureService.checkPictureAuth(loginUser, picture);
         }
-        Long id = commentService.addComment(pictureId, req.getContent(), req.getParentId(), loginUser);
+        Long id = commentService.addComment(pictureId, commentAddRequest.getContent(), commentAddRequest.getParentId(), loginUser);
         if (!loginUser.getId().equals(picture.getUserId())) {
             notificationService.createForComment(pictureId, id, loginUser.getId());
         }
         return ResultUtils.success(id);
     }
 
-    @GetMapping("/{pictureId}/list")
-    public BaseResponse<Page<CommentVO>> list(@PathVariable Long pictureId,
-                                                @RequestParam(defaultValue = "1") long current,
-                                                @RequestParam(defaultValue = "10") long size) {
+    @PostMapping("/list/page/vo")
+    public BaseResponse<Page<CommentVO>> list(@RequestBody CommentQueryRequest commentQueryRequest) {
+        if (commentQueryRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Long pictureId = commentQueryRequest.getPictureId();
+        if (pictureId == null || pictureId <= 0){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "图片ID错误");
+        }
+        long current = commentQueryRequest.getCurrent();
+        long size = commentQueryRequest.getPageSize();
+        if (current <= 0 || size <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        if (size > 20) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+
         Picture picture = pictureService.getById(pictureId);
         if (picture == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "图片不存在");

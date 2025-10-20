@@ -21,6 +21,7 @@ import com.zjl.lqpicturebackend.model.vo.UserVO;
 import com.zjl.lqpicturebackend.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -185,6 +186,16 @@ public class UserController {
         }
         // 返回最新登录用户信息
         return ResultUtils.success(userService.getLoginUserVO(user));
+    }
+
+    @PostMapping(value = "/avatar/upload")
+    public BaseResponse<String> uploadAvatar(@RequestPart("file")  MultipartFile file, HttpServletRequest request) {
+        if (file == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件不能为空");
+        }
+        User loginUser = userService.getLoginUser(request);
+        String url = userService.uploadUserAvatar(file, loginUser);
+        return ResultUtils.success(url);
     }
 
 }

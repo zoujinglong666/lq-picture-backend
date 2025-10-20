@@ -53,7 +53,16 @@ public class CommentServiceImpl extends ServiceImpl<PictureCommentMapper, Pictur
     }
 
     @Override
+       /**
+     * 分页查询图片的一级评论及其子回复
+     *
+     * @param pictureId 图片ID，用于筛选指定图片的评论
+     * @param current 当前页码，从1开始
+     * @param size 每页大小，即每页显示的记录数
+     * @return 返回封装好的评论分页数据，包括一级评论和对应的子回复
+     */
     public Page<CommentVO> listComments(Long pictureId, long current, long size) {
+        // 查询未删除的一级评论（parentId为空），并按创建时间倒序排列
         Page<PictureComment> page = this.lambdaQuery()
                 .eq(PictureComment::getPictureId, pictureId)
                 .eq(PictureComment::getIsDelete, 0)
@@ -65,7 +74,8 @@ public class CommentServiceImpl extends ServiceImpl<PictureCommentMapper, Pictur
         if (parents.isEmpty()) {
             return new Page<>(current, size, 0);
         }
-        // 查询子回复
+
+        // 查询所有一级评论对应的子回复
         List<Long> parentIds = parents.stream().map(PictureComment::getId).collect(Collectors.toList());
         List<PictureComment> replies = this.lambdaQuery()
                 .in(PictureComment::getParentId, parentIds)
@@ -73,20 +83,24 @@ public class CommentServiceImpl extends ServiceImpl<PictureCommentMapper, Pictur
                 .orderByAsc(PictureComment::getCreateTime)
                 .list();
 
-        // 用户信息映射
+        // 收集所有涉及的用户ID，并获取用户信息映射表
         List<Long> userIds = parents.stream().map(PictureComment::getUserId).collect(Collectors.toList());
         userIds.addAll(replies.stream().map(PictureComment::getUserId).collect(Collectors.toList()));
-        Map<Long, com.zjl.lqpicturebackend.model.User> userMap = userService.listByIds(userIds).stream()
-                .collect(Collectors.toMap(com.zjl.lqpicturebackend.model.User::getId, u -> u, (a, b) -> a));
+        Map<Long, User> userMap = userService.listByIds(userIds).stream()
+                .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
 
+        // 将子回复按照父评论ID进行分组
         Map<Long, List<PictureComment>> replyGroup = replies.stream().collect(Collectors.groupingBy(PictureComment::getParentId));
 
+        // 构造返回的VO对象列表
         List<CommentVO> voList = parents.stream().map(pc -> CommentVO.from(pc, userMap, replyGroup.get(pc.getId()))).collect(Collectors.toList());
 
+        // 构建最终的分页结果
         Page<CommentVO> voPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
         voPage.setRecords(voList);
         return voPage;
     }
+
 
     @Override
     public boolean deleteComment(Long commentId, User loginUser) {

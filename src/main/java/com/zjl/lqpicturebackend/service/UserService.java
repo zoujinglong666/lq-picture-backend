@@ -10,6 +10,7 @@ import com.zjl.lqpicturebackend.model.vo.UserVO;
 
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * @author zou
@@ -99,4 +100,11 @@ public interface UserService extends IService<User> {
      */
     LoginUserVO emailLogin(String email, String code, HttpServletRequest request);
 
+    /**
+     * 上传用户头像，返回头像URL
+     * @param file 头像文件
+     * @param loginUser 当前登录用户
+     * @return 头像访问URL
+     */
+    String uploadUserAvatar(MultipartFile file, User loginUser);
 }

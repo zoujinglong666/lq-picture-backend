@@ -15,6 +15,7 @@ import com.zjl.lqpicturebackend.exception.ThrowUtils;
 import com.zjl.lqpicturebackend.model.Picture;
 import com.zjl.lqpicturebackend.model.Space;
 import com.zjl.lqpicturebackend.model.User;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.zjl.lqpicturebackend.model.dto.picture.*;
 import com.zjl.lqpicturebackend.model.enums.PictureReviewStatusEnum;
 import com.zjl.lqpicturebackend.model.vo.PictureTagCategory;
@@ -36,6 +37,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.Objects;
 
 
 /**
@@ -277,6 +279,36 @@ public class PictureController {
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(true);
     }
+
+    /**
+     * 我的收藏（我点赞过的图片）分页列表
+     * 与已有分页响应风格一致，返回 PictureVO Page
+     */
+ @GetMapping("/my/likes")
+public BaseResponse<Page<PictureVO>> listMyLikedPictures(
+        @RequestParam(defaultValue = "1") int current,
+        @RequestParam(defaultValue = "10") int pageSize,
+        HttpServletRequest request) {
+
+    // 参数校验
+    if (current < 1 || pageSize < 1 || pageSize > 20) {
+        throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+    }
+
+    User loginUser = userService.getLoginUser(request);
+
+    PictureQueryRequest query = new PictureQueryRequest();
+    query.setCurrent(current);
+    query.setPageSize(pageSize);
+    query.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
+    query.setUserId(loginUser.getId());
+    query.setLikedByUser(true);
+
+    Page<Picture> picturePage = pictureService.page(new Page<>(current, pageSize),
+            pictureService.getQueryWrapper(query));
+    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
+}
+
 
 
 

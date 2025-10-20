@@ -280,6 +280,15 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
         Date startEditTime = pictureQueryRequest.getStartEditTime();
         Date endEditTime = pictureQueryRequest.getEndEditTime();
         boolean nullSpaceId = pictureQueryRequest.isNullSpaceId();
+        // 添加对 likedByUser 的处理
+        Boolean likedByUser = pictureQueryRequest.isLikedByUser();
+        if (likedByUser) {
+            // 使用 EXISTS 子查询来查找用户点赞过的图片
+            if (userId != null) {
+                queryWrapper.exists("SELECT 1 FROM picture_like pl WHERE pl.picture_id = id AND pl.user_id = {0} AND pl.is_delete = 0", userId);
+            }
+        }
+
         String sortField = pictureQueryRequest.getSortField();
         String sortOrder = pictureQueryRequest.getSortOrder();
         // 从多字段中搜索
@@ -292,6 +301,8 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
                             .like("introduction", searchText)
             );
         }
+
+
         queryWrapper.eq(ObjUtil.isNotEmpty(id), "id", id);
         queryWrapper.eq(ObjUtil.isNotEmpty(userId), "userId", userId);
         queryWrapper.eq(ObjUtil.isNotEmpty(spaceId), "spaceId", spaceId);
@@ -327,87 +338,100 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
     /**
      * 分页获取图片封装
      */
-    @Override
-    public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRequest request) {
-        List<Picture> pictureList = picturePage.getRecords();
-        Page<PictureVO> pictureVOPage = new Page<>(picturePage.getCurrent(), picturePage.getSize(), picturePage.getTotal());
-        if (CollUtil.isEmpty(pictureList)) {
-            return pictureVOPage;
-        }
-        // 对象列表 => 封装对象列表
-        List<PictureVO> pictureVOList = pictureList.stream()
-                .map(PictureVO::objToVo)
-                .collect(Collectors.toList());
-        // 1. 关联查询用户信息
-        // 1,2,3,4
-        Set<Long> userIdSet = pictureList.stream().map(Picture::getUserId).collect(Collectors.toSet());
-        // 1 => user1, 2 => user2
-        Map<Long, List<User>> userIdUserListMap = userService.listByIds(userIdSet).stream()
-                .collect(Collectors.groupingBy(User::getId));
-        // 2. 填充信息
-        pictureVOList.forEach(pictureVO -> {
-            Long userId = pictureVO.getUserId();
-            User user = null;
-            if (userIdUserListMap.containsKey(userId)) {
-                user = userIdUserListMap.get(userId).get(0);
-            }
-            pictureVO.setUser(userService.getUserVO(user));
-        });
-        // 批量聚合点赞数、评论数，并计算当前用户的已点赞集合
-        java.util.Set<Long> pictureIdSet = pictureList.stream().map(Picture::getId).collect(java.util.stream.Collectors.toSet());
-
-        // 点赞数聚合
-        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureLike> likeQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
-        likeQw.select("pictureId", "COUNT(*) AS cnt")
-                .in("pictureId", pictureIdSet)
-                .eq("isDelete", 0)
-                .groupBy("pictureId");
-        java.util.Map<Long, Long> likeCountMap = new java.util.HashMap<>();
-        for (java.util.Map<String, Object> row : pictureLikeMapper.selectMaps(likeQw)) {
-            Long pid = ((Number) row.get("pictureId")).longValue();
-            Long cnt = ((Number) row.get("cnt")).longValue();
-            likeCountMap.put(pid, cnt);
-        }
-
-        // 评论数聚合
-        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureComment> commentQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
-        commentQw.select("pictureId", "COUNT(*) AS cnt")
-                .in("pictureId", pictureIdSet)
-                .eq("isDelete", 0)
-                .groupBy("pictureId");
-        java.util.Map<Long, Long> commentCountMap = new java.util.HashMap<>();
-        for (java.util.Map<String, Object> row : pictureCommentMapper.selectMaps(commentQw)) {
-            Long pid = ((Number) row.get("pictureId")).longValue();
-            Long cnt = ((Number) row.get("cnt")).longValue();
-            commentCountMap.put(pid, cnt);
-        }
-
-        // 当前用户的已点赞集合
-        java.util.Set<Long> likedSet = new java.util.HashSet<>();
-        try {
-            User curUser = userService.getLoginUser(request);
-            if (curUser != null) {
-                java.util.List<PictureLike> likedList = pictureLikeMapper.selectList(
-                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<PictureLike>()
-                                .eq(PictureLike::getUserId, curUser.getId())
-                                .in(PictureLike::getPictureId, pictureIdSet)
-                                .eq(PictureLike::getIsDelete, 0)
-                );
-                likedSet = likedList.stream().map(PictureLike::getPictureId).collect(java.util.stream.Collectors.toSet());
-            }
-        } catch (Exception ignored) {}
-
-        // 批量填充到 VO
-        for (PictureVO vo : pictureVOList) {
-            Long pid = vo.getId();
-            vo.setLikeCount(likeCountMap.getOrDefault(pid, 0L));
-            vo.setCommentCount(commentCountMap.getOrDefault(pid, 0L));
-            vo.setHasLiked(likedSet.contains(pid));
-        }
-
-        pictureVOPage.setRecords(pictureVOList);
+@Override
+public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRequest request) {
+    List<Picture> pictureList = picturePage.getRecords();
+    Page<PictureVO> pictureVOPage = new Page<>(picturePage.getCurrent(), picturePage.getSize(), picturePage.getTotal());
+    if (CollUtil.isEmpty(pictureList)) {
         return pictureVOPage;
     }
+    // 对象列表 => 封装对象列表
+    List<PictureVO> pictureVOList = pictureList.stream()
+            .map(PictureVO::objToVo)
+            .collect(Collectors.toList());
+
+    // 补充审核状态相关字段
+    for (int i = 0; i < pictureList.size(); i++) {
+        Picture picture = pictureList.get(i);
+        PictureVO pictureVO = pictureVOList.get(i);
+        // 设置审核状态相关字段
+        pictureVO.setReviewStatus(picture.getReviewStatus());
+        pictureVO.setReviewMessage(picture.getReviewMessage());
+        pictureVO.setReviewerId(picture.getReviewerId());
+        pictureVO.setReviewTime(picture.getReviewTime());
+    }
+
+    // 1. 关联查询用户信息
+    // 1,2,3,4
+    Set<Long> userIdSet = pictureList.stream().map(Picture::getUserId).collect(Collectors.toSet());
+    // 1 => user1, 2 => user2
+    Map<Long, List<User>> userIdUserListMap = userService.listByIds(userIdSet).stream()
+            .collect(Collectors.groupingBy(User::getId));
+    // 2. 填充信息
+    pictureVOList.forEach(pictureVO -> {
+        Long userId = pictureVO.getUserId();
+        User user = null;
+        if (userIdUserListMap.containsKey(userId)) {
+            user = userIdUserListMap.get(userId).get(0);
+        }
+        pictureVO.setUser(userService.getUserVO(user));
+    });
+    // 批量聚合点赞数、评论数，并计算当前用户的已点赞集合
+    java.util.Set<Long> pictureIdSet = pictureList.stream().map(Picture::getId).collect(java.util.stream.Collectors.toSet());
+
+    // 点赞数聚合
+    com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureLike> likeQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+    likeQw.select("pictureId", "COUNT(*) AS cnt")
+            .in("pictureId", pictureIdSet)
+            .eq("isDelete", 0)
+            .groupBy("pictureId");
+    java.util.Map<Long, Long> likeCountMap = new java.util.HashMap<>();
+    for (java.util.Map<String, Object> row : pictureLikeMapper.selectMaps(likeQw)) {
+        Long pid = ((Number) row.get("pictureId")).longValue();
+        Long cnt = ((Number) row.get("cnt")).longValue();
+        likeCountMap.put(pid, cnt);
+    }
+
+    // 评论数聚合
+    com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureComment> commentQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+    commentQw.select("pictureId", "COUNT(*) AS cnt")
+            .in("pictureId", pictureIdSet)
+            .eq("isDelete", 0)
+            .groupBy("pictureId");
+    java.util.Map<Long, Long> commentCountMap = new java.util.HashMap<>();
+    for (java.util.Map<String, Object> row : pictureCommentMapper.selectMaps(commentQw)) {
+        Long pid = ((Number) row.get("pictureId")).longValue();
+        Long cnt = ((Number) row.get("cnt")).longValue();
+        commentCountMap.put(pid, cnt);
+    }
+
+    // 当前用户的已点赞集合
+    java.util.Set<Long> likedSet = new java.util.HashSet<>();
+    try {
+        User curUser = userService.getLoginUser(request);
+        if (curUser != null) {
+            java.util.List<PictureLike> likedList = pictureLikeMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<PictureLike>()
+                            .eq(PictureLike::getUserId, curUser.getId())
+                            .in(PictureLike::getPictureId, pictureIdSet)
+                            .eq(PictureLike::getIsDelete, 0)
+            );
+            likedSet = likedList.stream().map(PictureLike::getPictureId).collect(java.util.stream.Collectors.toSet());
+        }
+    } catch (Exception ignored) {}
+
+    // 批量填充到 VO
+    for (PictureVO vo : pictureVOList) {
+        Long pid = vo.getId();
+        vo.setLikeCount(likeCountMap.getOrDefault(pid, 0L));
+        vo.setCommentCount(commentCountMap.getOrDefault(pid, 0L));
+        vo.setHasLiked(likedSet.contains(pid));
+    }
+
+    pictureVOPage.setRecords(pictureVOList);
+    return pictureVOPage;
+}
+
 
     @Override
     public void validPicture(Picture picture) {
