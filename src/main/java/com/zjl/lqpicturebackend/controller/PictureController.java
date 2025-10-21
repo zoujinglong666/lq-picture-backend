@@ -158,18 +158,19 @@ public class PictureController {
      * @return 图片分页列表
      */
     @PostMapping("/review/list/page/vo")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Page<PictureVO>> listReviewPictureVOByPage(@RequestBody(required = false) PictureQueryRequest pictureQueryRequest,
                                                                HttpServletRequest request) {
         if (pictureQueryRequest == null) {
             pictureQueryRequest = new PictureQueryRequest();
         }
+        User loginUser = userService.getLoginUser(request);
         long current = pictureQueryRequest.getCurrent();
         long size = pictureQueryRequest.getPageSize();
         // 限制爬虫
         ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
         // 只查询公共图库的
         pictureQueryRequest.setNullSpaceId(true);
+        pictureQueryRequest.setUserId(loginUser.getId());
         QueryWrapper<Picture> queryWrapper = pictureService.getQueryWrapper(pictureQueryRequest);
         // 本接口不返回审核通过的图片
         queryWrapper.ne("reviewStatus", PictureReviewStatusEnum.PASS.getValue());
