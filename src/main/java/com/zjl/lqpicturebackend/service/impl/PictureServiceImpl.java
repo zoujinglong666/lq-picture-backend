@@ -608,6 +608,51 @@ public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRe
         }
         return uploadCount;
     }
+
+    @Override
+    public Page<Picture> listMyLikedPicturesByMyBatis(long current, long pageSize, Long userId) {
+        Page<Picture> page = new Page<>(current, pageSize);
+        return baseMapper.listMyLikedPicturesByMyBatis(page, userId);
+    }
+
+    @Override
+    public Page<Picture> listMyLikedPicturesV3(long current, long pageSize, Long userId) {
+        Page<Picture> page = new Page<>(current, pageSize);
+        return baseMapper.listMyLikedPicturesV3(page, userId);
+    }
+
+    @Override
+    public Page<Picture> listMyLikedPicturesV4(long current, long pageSize, Long userId) {
+        if (userId == null) {
+            return new Page<>(current, pageSize);
+        }
+        // 1. 查询用户点赞的所有 picture_id，并按点赞时间倒序排序
+        List<PictureLike> pictureLikeList = pictureLikeMapper.selectList(
+                new QueryWrapper<PictureLike>()
+                        .select("pictureId")
+                        .eq("userId", userId)
+                        .eq("isDelete", 0)
+                        .orderByDesc("createTime")
+        );
+
+        if (CollUtil.isEmpty(pictureLikeList)) {
+            return new Page<>(current, pageSize);
+        }
+
+        List<Long> pictureIds = pictureLikeList.stream()
+                .map(PictureLike::getPictureId)
+                .collect(Collectors.toList());
+
+        // 2. 根据 picture_id 查询图片信息
+        Page<Picture> page = new Page<>(current, pageSize);
+        QueryWrapper<Picture> queryWrapper = new QueryWrapper<>();
+        queryWrapper.in("id", pictureIds);
+        // 按 id 列表的顺序排序，以实现按点赞时间排序
+        String idsStr = StrUtil.join(",", pictureIds);
+        queryWrapper.orderBy(true, true, "FIELD(id, " + idsStr + ")");
+
+        return this.page(page, queryWrapper);
+    }
 }
 
 

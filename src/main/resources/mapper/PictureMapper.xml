@@ -33,4 +33,14 @@
         createTime,editTime,updateTime,
         isDelete
     </sql>
+
+    <select id="listMyLikedPicturesByMyBatis" resultType="com.zjl.lqpicturebackend.model.Picture">
+        SELECT p.*
+        FROM picture p
+                 JOIN picture_like pl ON p.id = pl.pictureId
+        WHERE pl.userId = #{userId}
+          AND pl.isDelete = 0
+          AND p.isDelete = 0
+        ORDER BY pl.createTime DESC
+    </select>
 </mapper>

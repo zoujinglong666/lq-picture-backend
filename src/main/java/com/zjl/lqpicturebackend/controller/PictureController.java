@@ -310,7 +310,54 @@ public BaseResponse<Page<PictureVO>> listMyLikedPictures(
 }
 
 
+@GetMapping("/my/likes/v2")
+public BaseResponse<Page<PictureVO>> listMyLikedPicturesV2(
+        @RequestParam(defaultValue = "1") int current,
+        @RequestParam(defaultValue = "10") int pageSize,
+        HttpServletRequest request) {
 
+    // 参数校验
+    if (current < 1 || pageSize < 1 || pageSize > 20) {
+        throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+    }
+
+    User loginUser = userService.getLoginUser(request);
+    Page<Picture> picturePage = pictureService.listMyLikedPicturesByMyBatis(current, pageSize, loginUser.getId());
+    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
+}
+
+
+@GetMapping("/my/likes/v3")
+public BaseResponse<Page<PictureVO>> listMyLikedPicturesV3(
+        @RequestParam(defaultValue = "1") int current,
+        @RequestParam(defaultValue = "10") int pageSize,
+        HttpServletRequest request) {
+
+    // 参数校验
+    if (current < 1 || pageSize < 1 || pageSize > 20) {
+        throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+    }
+
+    User loginUser = userService.getLoginUser(request);
+    Page<Picture> picturePage = pictureService.listMyLikedPicturesV3(current, pageSize, loginUser.getId());
+    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
+}
+
+@GetMapping("/my/likes/v4")
+public BaseResponse<Page<PictureVO>> listMyLikedPicturesV4(
+        @RequestParam(defaultValue = "1") int current,
+        @RequestParam(defaultValue = "10") int pageSize,
+        HttpServletRequest request) {
+
+    // 参数校验
+    if (current < 1 || pageSize < 1 || pageSize > 20) {
+        throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+    }
+
+    User loginUser = userService.getLoginUser(request);
+    Page<Picture> picturePage = pictureService.listMyLikedPicturesV4(current, pageSize, loginUser.getId());
+    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
+}
 
 
 }

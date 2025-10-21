@@ -51,4 +51,10 @@ public interface PictureService extends IService<Picture> {
 
 
     Integer uploadPictureByBatch(PictureUploadByBatchRequest pictureUploadByBatchRequest, User loginUser);
+
+    Page<Picture> listMyLikedPicturesByMyBatis(long current, long pageSize, Long id);
+
+    Page<Picture> listMyLikedPicturesV3(long current, long pageSize, Long id);
+
+    Page<Picture> listMyLikedPicturesV4(long current, long pageSize, Long id);
 }
