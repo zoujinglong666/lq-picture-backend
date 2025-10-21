@@ -150,6 +150,36 @@ public class PictureController {
         return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
     }
 
+    /**
+     * 分页获取待审核的公共图片列表
+     *
+     * @param pictureQueryRequest 查询条件
+     * @param request             http请求
+     * @return 图片分页列表
+     */
+    @PostMapping("/review/list/page/vo")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    public BaseResponse<Page<PictureVO>> listReviewPictureVOByPage(@RequestBody(required = false) PictureQueryRequest pictureQueryRequest,
+                                                               HttpServletRequest request) {
+        if (pictureQueryRequest == null) {
+            pictureQueryRequest = new PictureQueryRequest();
+        }
+        long current = pictureQueryRequest.getCurrent();
+        long size = pictureQueryRequest.getPageSize();
+        // 限制爬虫
+        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
+        // 只查询公共图库的
+        pictureQueryRequest.setNullSpaceId(true);
+        QueryWrapper<Picture> queryWrapper = pictureService.getQueryWrapper(pictureQueryRequest);
+        // 本接口不返回审核通过的图片
+        queryWrapper.ne("reviewStatus", PictureReviewStatusEnum.PASS.getValue());
+        // 查询数据库
+        Page<Picture> picturePage = pictureService.page(new Page<>(current, size),
+                queryWrapper);
+        // 获取封装类
+        return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
+    }
+
 
     @Deprecated
     @PostMapping("/list/page/vo/cache")
@@ -327,21 +357,21 @@ public BaseResponse<Page<PictureVO>> listMyLikedPicturesV2(
 }
 
 
-@GetMapping("/my/likes/v3")
-public BaseResponse<Page<PictureVO>> listMyLikedPicturesV3(
-        @RequestParam(defaultValue = "1") int current,
-        @RequestParam(defaultValue = "10") int pageSize,
-        HttpServletRequest request) {
-
-    // 参数校验
-    if (current < 1 || pageSize < 1 || pageSize > 20) {
-        throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
-    }
-
-    User loginUser = userService.getLoginUser(request);
-    Page<Picture> picturePage = pictureService.listMyLikedPicturesV3(current, pageSize, loginUser.getId());
-    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
-}
+//@GetMapping("/my/likes/v3")
+//public BaseResponse<Page<PictureVO>> listMyLikedPicturesV3(
+//        @RequestParam(defaultValue = "1") int current,
+//        @RequestParam(defaultValue = "10") int pageSize,
+//        HttpServletRequest request) {
+//
+//    // 参数校验
+//    if (current < 1 || pageSize < 1 || pageSize > 20) {
+//        throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+//    }
+//
+//    User loginUser = userService.getLoginUser(request);
+//    Page<Picture> picturePage = pictureService.listMyLikedPicturesV3(current, pageSize, loginUser.getId());
+//    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
+//}
 
 @GetMapping("/my/likes/v4")
 public BaseResponse<Page<PictureVO>> listMyLikedPicturesV4(

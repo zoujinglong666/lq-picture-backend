@@ -54,7 +54,7 @@ public interface PictureService extends IService<Picture> {
 
     Page<Picture> listMyLikedPicturesByMyBatis(long current, long pageSize, Long id);
 
-    Page<Picture> listMyLikedPicturesV3(long current, long pageSize, Long id);
+//    Page<Picture> listMyLikedPicturesV3(long current, long pageSize, Long id);
 
     Page<Picture> listMyLikedPicturesV4(long current, long pageSize, Long id);
 }

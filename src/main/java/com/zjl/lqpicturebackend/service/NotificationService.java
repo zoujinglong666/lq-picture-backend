@@ -10,6 +10,8 @@ public interface NotificationService {
 
     void createForComment(Long pictureId, Long commentId, Long actorUserId);
 
+    void createForPictureReview(Long pictureId, Integer reviewStatus);
+
     Page<NotificationVO> listMyNotifications(long current, long size, User loginUser);
 
     void markRead(Long id, User loginUser);

@@ -33,7 +33,10 @@ import com.zjl.lqpicturebackend.service.SpaceService;
 import com.zjl.lqpicturebackend.service.UserService;
 import com.zjl.lqpicturebackend.service.LikeService;
 import com.zjl.lqpicturebackend.service.CommentService;
+import com.zjl.lqpicturebackend.service.NotificationService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -87,6 +90,9 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
     @Resource
     private CommentService commentService;
 
+    @Lazy
+    @Autowired
+    private NotificationService notificationService;
 
     @Resource
     private TransactionTemplate transactionTemplate;
@@ -546,7 +552,10 @@ public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRe
         boolean result = this.updateById(updatePicture);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "审核失败");
 
-
+        // 发送通知
+        if (reviewStatusEnum.equals(PictureReviewStatusEnum.PASS) || reviewStatusEnum.equals(PictureReviewStatusEnum.REJECT)) {
+            notificationService.createForPictureReview(id, reviewStatusEnum.getValue());
+        }
     }
 
 
@@ -615,11 +624,11 @@ public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRe
         return baseMapper.listMyLikedPicturesByMyBatis(page, userId);
     }
 
-    @Override
-    public Page<Picture> listMyLikedPicturesV3(long current, long pageSize, Long userId) {
-        Page<Picture> page = new Page<>(current, pageSize);
-        return baseMapper.listMyLikedPicturesV3(page, userId);
-    }
+//    @Override
+//    public Page<Picture> listMyLikedPicturesV3(long current, long pageSize, Long userId) {
+//        Page<Picture> page = new Page<>(current, pageSize);
+//        return baseMapper.listMyLikedPicturesV3(page, userId);
+//    }
 
     @Override
     public Page<Picture> listMyLikedPicturesV4(long current, long pageSize, Long userId) {
@@ -631,7 +640,6 @@ public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRe
                 new QueryWrapper<PictureLike>()
                         .select("pictureId")
                         .eq("userId", userId)
-                        .eq("isDelete", 0)
                         .orderByDesc("createTime")
         );
 

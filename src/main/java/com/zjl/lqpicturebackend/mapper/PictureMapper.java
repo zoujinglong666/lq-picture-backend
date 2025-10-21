@@ -16,8 +16,8 @@ public interface PictureMapper extends BaseMapper<Picture> {
 
     Page<Picture> listMyLikedPicturesByMyBatis(Page<Picture> page, @Param("userId") Long userId);
 
-    @SelectProvider(type = PictureSqlProvider.class, method = "listMyLikedPicturesV3")
-    Page<Picture> listMyLikedPicturesV3(Page<Picture> page, @Param("userId") Long userId);
+//    @SelectProvider(type = PictureSqlProvider.class, method = "listMyLikedPicturesV3")
+//    Page<Picture> listMyLikedPicturesV3(Page<Picture> page, @Param("userId") Long userId);
 }
 
 

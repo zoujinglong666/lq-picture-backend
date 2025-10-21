@@ -7,7 +7,9 @@ import com.zjl.lqpicturebackend.model.User;
 import com.zjl.lqpicturebackend.model.vo.NotificationVO;
 import com.zjl.lqpicturebackend.service.NotificationService;
 import com.zjl.lqpicturebackend.service.UserService;
+import com.zjl.lqpicturebackend.utils.SseEmitterServer;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -20,6 +22,19 @@ public class NotificationController {
     private UserService userService;
     @Resource
     private NotificationService notificationService;
+    @Resource
+    private SseEmitterServer sseEmitterServer;
+
+    @GetMapping("/subscribe")
+    public SseEmitter subscribe(HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        if (loginUser == null) {
+            // 在实际应用中，这里应该通过异常处理器返回一个标准的错误响应
+            // 为了简单起见，这里返回 null，前端会收到一个错误
+            return null;
+        }
+        return sseEmitterServer.createSse(loginUser.getId());
+    }
 
     @GetMapping("/list")
     public BaseResponse<Page<NotificationVO>> list(@RequestParam(defaultValue = "1") long current,

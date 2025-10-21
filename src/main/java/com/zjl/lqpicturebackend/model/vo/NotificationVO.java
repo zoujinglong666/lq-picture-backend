@@ -18,6 +18,12 @@ public class NotificationVO implements Serializable {
     private Integer readStatus;
     private Date createTime;
 
+    // New fields for rich content
+    private String pictureUrl;
+    private Long actorId;
+    private String actorName;
+    private String actorAvatar;
+
     private static final long serialVersionUID = 1L;
 
     public static NotificationVO from(Notification n) {

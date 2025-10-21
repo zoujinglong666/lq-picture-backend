@@ -15,6 +15,8 @@ import java.util.List;
 @Data
 public class PictureQueryRequest extends PageRequest implements Serializable {
 
+
+
     /**
      * id
      */
