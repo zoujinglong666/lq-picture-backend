@@ -301,8 +301,8 @@ public BaseResponse<Page<PictureVO>> listMyLikedPictures(
     query.setCurrent(current);
     query.setPageSize(pageSize);
     query.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
-    query.setUserId(loginUser.getId());
     query.setLikedByUser(true);
+    query.setUserId(loginUser.getId());
 
     Page<Picture> picturePage = pictureService.page(new Page<>(current, pageSize),
             pictureService.getQueryWrapper(query));

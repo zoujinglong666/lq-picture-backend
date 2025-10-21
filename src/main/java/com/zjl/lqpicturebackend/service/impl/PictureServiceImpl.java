@@ -281,12 +281,15 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
         Date endEditTime = pictureQueryRequest.getEndEditTime();
         boolean nullSpaceId = pictureQueryRequest.isNullSpaceId();
         // 添加对 likedByUser 的处理
-        Boolean likedByUser = pictureQueryRequest.isLikedByUser();
+        boolean likedByUser = pictureQueryRequest.isLikedByUser();
         if (likedByUser) {
-            // 使用 EXISTS 子查询来查找用户点赞过的图片
+            // 使用 IN 子查询来查找用户点赞过的图片
             if (userId != null) {
-                queryWrapper.exists("SELECT 1 FROM picture_like pl WHERE pl.picture_id = id AND pl.user_id = {0} AND pl.is_delete = 0", userId);
+                queryWrapper.inSql("id", "SELECT pictureId FROM picture_like WHERE userId = " + userId + " AND isDelete = 0");
             }
+        } else {
+            // 仅在不查询点赞图片时，才把 userId 作为查询条件
+            queryWrapper.eq(ObjUtil.isNotEmpty(userId), "userId", userId);
         }
 
         String sortField = pictureQueryRequest.getSortField();
@@ -304,7 +307,6 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
 
 
         queryWrapper.eq(ObjUtil.isNotEmpty(id), "id", id);
-        queryWrapper.eq(ObjUtil.isNotEmpty(userId), "userId", userId);
         queryWrapper.eq(ObjUtil.isNotEmpty(spaceId), "spaceId", spaceId);
         queryWrapper.isNull(nullSpaceId, "spaceId");
         queryWrapper.like(StrUtil.isNotBlank(name), "name", name);
