@@ -9,14 +9,13 @@ import com.zjl.lqpicturebackend.mapper.PictureCommentMapper;
 import com.zjl.lqpicturebackend.model.PictureComment;
 import com.zjl.lqpicturebackend.model.User;
 import com.zjl.lqpicturebackend.model.vo.CommentVO;
+import com.zjl.lqpicturebackend.model.vo.UserVO;
 import com.zjl.lqpicturebackend.service.CommentService;
 import com.zjl.lqpicturebackend.service.UserService;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -52,54 +51,120 @@ public class CommentServiceImpl extends ServiceImpl<PictureCommentMapper, Pictur
         return comment.getId();
     }
 
-    @Override
        /**
-     * 分页查询图片的一级评论及其子回复
+     * 分页查询图片的评论（支持多级评论）
      *
      * @param pictureId 图片ID，用于筛选指定图片的评论
      * @param current 当前页码，从1开始
      * @param size 每页大小，即每页显示的记录数
-     * @return 返回封装好的评论分页数据，包括一级评论和对应的子回复
+     * @return 返回封装好的评论分页数据，包括所有层级的评论
      */
+    @Override
     public Page<CommentVO> listComments(Long pictureId, long current, long size) {
-        // 查询未删除的一级评论（parentId为空），并按创建时间倒序排列
-        Page<PictureComment> page = this.lambdaQuery()
+
+        // Step 1️⃣ 查询一级评论（分页）
+        Page<PictureComment> parentPage = this.lambdaQuery()
                 .eq(PictureComment::getPictureId, pictureId)
                 .eq(PictureComment::getIsDelete, 0)
-                .isNull(PictureComment::getParentId) // 一级评论
+                .isNull(PictureComment::getParentId)
                 .orderByDesc(PictureComment::getCreateTime)
                 .page(new Page<>(current, size));
 
-        List<PictureComment> parents = page.getRecords();
+        List<PictureComment> parents = parentPage.getRecords();
         if (parents.isEmpty()) {
             return new Page<>(current, size, 0);
         }
 
-        // 查询所有一级评论对应的子回复
-        List<Long> parentIds = parents.stream().map(PictureComment::getId).collect(Collectors.toList());
-        List<PictureComment> replies = this.lambdaQuery()
-                .in(PictureComment::getParentId, parentIds)
+        // Step 2️⃣ 查询该图片下的所有评论（用于构建多级结构）
+        List<PictureComment> allComments = this.lambdaQuery()
+                .eq(PictureComment::getPictureId, pictureId)
                 .eq(PictureComment::getIsDelete, 0)
                 .orderByAsc(PictureComment::getCreateTime)
                 .list();
 
-        // 收集所有涉及的用户ID，并获取用户信息映射表
-        List<Long> userIds = parents.stream().map(PictureComment::getUserId).collect(Collectors.toList());
-        userIds.addAll(replies.stream().map(PictureComment::getUserId).collect(Collectors.toList()));
-        Map<Long, User> userMap = userService.listByIds(userIds).stream()
-                .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
+        // Step 3️⃣ 收集所有涉及的用户ID
+        Set<Long> userIds = allComments.stream()
+                .map(PictureComment::getUserId)
+                .collect(Collectors.toSet());
 
-        // 将子回复按照父评论ID进行分组
-        Map<Long, List<PictureComment>> replyGroup = replies.stream().collect(Collectors.groupingBy(PictureComment::getParentId));
+        // Step 4️⃣ 获取用户信息映射表
+        Map<Long, User> userMap;
+        if (!userIds.isEmpty()) {
+            userMap = userService.listByIds(userIds).stream()
+                    .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
+        } else {
+            userMap = new HashMap<>();
+        }
 
-        // 构造返回的VO对象列表
-        List<CommentVO> voList = parents.stream().map(pc -> CommentVO.from(pc, userMap, replyGroup.get(pc.getId()))).collect(Collectors.toList());
+        // Step 5️⃣ 构建评论树结构
+        List<CommentVO> voList = buildCommentTree(parents, allComments, userMap);
 
-        // 构建最终的分页结果
-        Page<CommentVO> voPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
+        // Step 6️⃣ 构造返回分页对象
+        Page<CommentVO> voPage = new Page<>(parentPage.getCurrent(), parentPage.getSize(), parentPage.getTotal());
         voPage.setRecords(voList);
+
         return voPage;
     }
+
+    /**
+     * 构建多级评论树结构
+     */
+    private List<CommentVO> buildCommentTree(List<PictureComment> parents, 
+                                            List<PictureComment> allComments, 
+                                            Map<Long, User> userMap) {
+        // 按parentId分组所有评论（包括所有有父评论的评论）
+        Map<Long, List<PictureComment>> commentMap = allComments.stream()
+                .filter(c -> c.getParentId() != null)
+                .collect(Collectors.groupingBy(PictureComment::getParentId));
+
+        // 调试日志：检查分组结果
+        System.out.println("评论分组结果:");
+        commentMap.forEach((parentId, comments) -> {
+            System.out.println("父评论ID: " + parentId + ", 子评论数量: " + comments.size());
+            comments.forEach(comment -> System.out.println("  - 子评论: " + comment));
+        });
+
+        return parents.stream()
+                .map(parent -> buildCommentVO(parent, commentMap, userMap))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 递归构建评论VO（支持无限层级）
+     */
+    private CommentVO buildCommentVO(PictureComment comment, 
+                                    Map<Long, List<PictureComment>> commentMap,
+                                    Map<Long, User> userMap) {
+        CommentVO vo = new CommentVO();
+        org.springframework.beans.BeanUtils.copyProperties(comment, vo);
+        
+        // 设置用户信息
+        User u = userMap.get(comment.getUserId());
+        if (u != null) {
+            UserVO userVO = new UserVO();
+            org.springframework.beans.BeanUtils.copyProperties(u, userVO);
+            vo.setUser(userVO);
+        }
+
+        // 调试日志：检查当前评论
+        System.out.println("构建评论VO: ID=" + comment.getId() + ", ParentID=" + comment.getParentId() + ", UserID=" + comment.getUserId());
+
+        // 递归构建子评论
+        List<PictureComment> children = commentMap.get(comment.getId());
+        if (children != null && !children.isEmpty()) {
+            System.out.println("评论 " + comment.getId() + " 有 " + children.size() + " 个子评论");
+            List<CommentVO> childVOs = children.stream()
+                    .map(child -> buildCommentVO(child, commentMap, userMap))
+                    .collect(Collectors.toList());
+            vo.setReplies(childVOs);
+            System.out.println("评论 " + comment.getId() + " 构建完成，子评论数量: " + childVOs.size());
+        } else {
+            System.out.println("评论 " + comment.getId() + " 没有子评论");
+        }
+
+        return vo;
+    }
+
 
 
     @Override

@@ -57,4 +57,14 @@ public interface PictureService extends IService<Picture> {
 //    Page<Picture> listMyLikedPicturesV3(long current, long pageSize, Long id);
 
     Page<Picture> listMyLikedPicturesV4(long current, long pageSize, Long id);
+
+    long countMyUpload(Long userId);
+
+    long countLikesReceived(Long userId);
+
+    long countMyLikesGiven(Long userId);
+
+    long countMyComments(Long userId);
+
+    java.util.Map<String, Object> stats7d(Long userId);
 }

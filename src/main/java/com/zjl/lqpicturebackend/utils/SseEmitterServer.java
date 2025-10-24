@@ -45,6 +45,19 @@ public class SseEmitterServer {
     }
 
     /**
+     * 主动关闭 SSE 连接
+     *
+     * @param userId 用户ID
+     */
+    public void closeSse(Long userId) {
+        SseEmitter sseEmitter = sseEmitterMap.get(userId);
+        if (sseEmitter != null) {
+            sseEmitter.complete();
+            // onCompletion回调会自动调用removeSse
+        }
+    }
+
+    /**
      * 发送消息给指定用户
      *
      * @param userId         用户ID

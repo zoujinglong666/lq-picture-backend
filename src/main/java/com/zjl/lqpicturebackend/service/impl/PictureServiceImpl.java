@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -48,10 +49,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.time.LocalDate;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -175,11 +174,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
             ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "图片上传失败，数据库操作失败");
             if (finalSpaceId != null) {
                 // 更新空间的使用额度
-                boolean update = spaceService.lambdaUpdate()
-                        .eq(Space::getId, finalSpaceId)
-                        .setSql("totalSize = totalSize + " + picture.getPicSize())
-                        .setSql("totalCount = totalCount + 1")
-                        .update();
+                boolean update = spaceService.lambdaUpdate().eq(Space::getId, finalSpaceId).setSql("totalSize = totalSize + " + picture.getPicSize()).setSql("totalCount = totalCount + 1").update();
                 ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR, "额度更新失败");
             }
             return picture;
@@ -202,22 +197,18 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
 
         Long spaceId = oldPicture.getSpaceId();
 
-        if(spaceId != null){
+        if (spaceId != null) {
             // 开启事务
             transactionTemplate.execute(status -> {
                 // 操作数据库
                 boolean result = this.removeById(pictureId);
                 ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
                 // 更新空间的使用额度，释放额度
-                boolean update = spaceService.lambdaUpdate()
-                        .eq(Space::getId,spaceId)
-                        .setSql("totalSize = totalSize - " + oldPicture.getPicSize())
-                        .setSql("totalCount = totalCount - 1")
-                        .update();
+                boolean update = spaceService.lambdaUpdate().eq(Space::getId, spaceId).setSql("totalSize = totalSize - " + oldPicture.getPicSize()).setSql("totalCount = totalCount - 1").update();
                 ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR, "额度更新失败");
                 return true;
             });
-        }else{
+        } else {
             boolean result = this.removeById(pictureId);
             ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         }
@@ -304,11 +295,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
         if (StrUtil.isNotBlank(searchText)) {
             // 需要拼接查询条件
             // and (name like "%xxx%" or introduction like "%xxx%")
-            queryWrapper.and(
-                    qw -> qw.like("name", searchText)
-                            .or()
-                            .like("introduction", searchText)
-            );
+            queryWrapper.and(qw -> qw.like("name", searchText).or().like("introduction", searchText));
         }
 
 
@@ -346,99 +333,86 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
     /**
      * 分页获取图片封装
      */
-@Override
-public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRequest request) {
-    List<Picture> pictureList = picturePage.getRecords();
-    Page<PictureVO> pictureVOPage = new Page<>(picturePage.getCurrent(), picturePage.getSize(), picturePage.getTotal());
-    if (CollUtil.isEmpty(pictureList)) {
+    @Override
+    public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRequest request) {
+        List<Picture> pictureList = picturePage.getRecords();
+        Page<PictureVO> pictureVOPage = new Page<>(picturePage.getCurrent(), picturePage.getSize(), picturePage.getTotal());
+        if (CollUtil.isEmpty(pictureList)) {
+            return pictureVOPage;
+        }
+        // 对象列表 => 封装对象列表
+        List<PictureVO> pictureVOList = pictureList.stream().map(PictureVO::objToVo).collect(Collectors.toList());
+
+        // 补充审核状态相关字段
+        for (int i = 0; i < pictureList.size(); i++) {
+            Picture picture = pictureList.get(i);
+            PictureVO pictureVO = pictureVOList.get(i);
+            // 设置审核状态相关字段
+            pictureVO.setReviewStatus(picture.getReviewStatus());
+            pictureVO.setReviewMessage(picture.getReviewMessage());
+            pictureVO.setReviewerId(picture.getReviewerId());
+            pictureVO.setReviewTime(picture.getReviewTime());
+        }
+
+        // 1. 关联查询用户信息
+        // 1,2,3,4
+        Set<Long> userIdSet = pictureList.stream().map(Picture::getUserId).collect(Collectors.toSet());
+        // 1 => user1, 2 => user2
+        Map<Long, List<User>> userIdUserListMap = userService.listByIds(userIdSet).stream().collect(Collectors.groupingBy(User::getId));
+        // 2. 填充信息
+        pictureVOList.forEach(pictureVO -> {
+            Long userId = pictureVO.getUserId();
+            User user = null;
+            if (userIdUserListMap.containsKey(userId)) {
+                user = userIdUserListMap.get(userId).get(0);
+            }
+            pictureVO.setUser(userService.getUserVO(user));
+        });
+        // 批量聚合点赞数、评论数，并计算当前用户的已点赞集合
+        java.util.Set<Long> pictureIdSet = pictureList.stream().map(Picture::getId).collect(java.util.stream.Collectors.toSet());
+
+        // 点赞数聚合
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureLike> likeQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        likeQw.select("pictureId", "COUNT(*) AS cnt").in("pictureId", pictureIdSet).eq("isDelete", 0).groupBy("pictureId");
+        java.util.Map<Long, Long> likeCountMap = new java.util.HashMap<>();
+        for (java.util.Map<String, Object> row : pictureLikeMapper.selectMaps(likeQw)) {
+            Long pid = ((Number) row.get("pictureId")).longValue();
+            Long cnt = ((Number) row.get("cnt")).longValue();
+            likeCountMap.put(pid, cnt);
+        }
+
+        // 评论数聚合
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureComment> commentQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        commentQw.select("pictureId", "COUNT(*) AS cnt").in("pictureId", pictureIdSet).eq("isDelete", 0).groupBy("pictureId");
+        java.util.Map<Long, Long> commentCountMap = new java.util.HashMap<>();
+        for (java.util.Map<String, Object> row : pictureCommentMapper.selectMaps(commentQw)) {
+            Long pid = ((Number) row.get("pictureId")).longValue();
+            Long cnt = ((Number) row.get("cnt")).longValue();
+            commentCountMap.put(pid, cnt);
+        }
+
+        // 当前用户的已点赞集合
+        java.util.Set<Long> likedSet = new java.util.HashSet<>();
+        try {
+            User curUser = userService.getLoginUser(request);
+            if (curUser != null) {
+                java.util.List<PictureLike> likedList = pictureLikeMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<PictureLike>().eq(PictureLike::getUserId, curUser.getId()).in(PictureLike::getPictureId, pictureIdSet).eq(PictureLike::getIsDelete, 0));
+                likedSet = likedList.stream().map(PictureLike::getPictureId).collect(java.util.stream.Collectors.toSet());
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 批量填充到 VO
+        for (PictureVO vo : pictureVOList) {
+            Long pid = vo.getId();
+            vo.setLikeCount(likeCountMap.getOrDefault(pid, 0L));
+            vo.setCommentCount(commentCountMap.getOrDefault(pid, 0L));
+            vo.setHasLiked(likedSet.contains(pid));
+        }
+
+        pictureVOPage.setRecords(pictureVOList);
         return pictureVOPage;
     }
-    // 对象列表 => 封装对象列表
-    List<PictureVO> pictureVOList = pictureList.stream()
-            .map(PictureVO::objToVo)
-            .collect(Collectors.toList());
-
-    // 补充审核状态相关字段
-    for (int i = 0; i < pictureList.size(); i++) {
-        Picture picture = pictureList.get(i);
-        PictureVO pictureVO = pictureVOList.get(i);
-        // 设置审核状态相关字段
-        pictureVO.setReviewStatus(picture.getReviewStatus());
-        pictureVO.setReviewMessage(picture.getReviewMessage());
-        pictureVO.setReviewerId(picture.getReviewerId());
-        pictureVO.setReviewTime(picture.getReviewTime());
-    }
-
-    // 1. 关联查询用户信息
-    // 1,2,3,4
-    Set<Long> userIdSet = pictureList.stream().map(Picture::getUserId).collect(Collectors.toSet());
-    // 1 => user1, 2 => user2
-    Map<Long, List<User>> userIdUserListMap = userService.listByIds(userIdSet).stream()
-            .collect(Collectors.groupingBy(User::getId));
-    // 2. 填充信息
-    pictureVOList.forEach(pictureVO -> {
-        Long userId = pictureVO.getUserId();
-        User user = null;
-        if (userIdUserListMap.containsKey(userId)) {
-            user = userIdUserListMap.get(userId).get(0);
-        }
-        pictureVO.setUser(userService.getUserVO(user));
-    });
-    // 批量聚合点赞数、评论数，并计算当前用户的已点赞集合
-    java.util.Set<Long> pictureIdSet = pictureList.stream().map(Picture::getId).collect(java.util.stream.Collectors.toSet());
-
-    // 点赞数聚合
-    com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureLike> likeQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
-    likeQw.select("pictureId", "COUNT(*) AS cnt")
-            .in("pictureId", pictureIdSet)
-            .eq("isDelete", 0)
-            .groupBy("pictureId");
-    java.util.Map<Long, Long> likeCountMap = new java.util.HashMap<>();
-    for (java.util.Map<String, Object> row : pictureLikeMapper.selectMaps(likeQw)) {
-        Long pid = ((Number) row.get("pictureId")).longValue();
-        Long cnt = ((Number) row.get("cnt")).longValue();
-        likeCountMap.put(pid, cnt);
-    }
-
-    // 评论数聚合
-    com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureComment> commentQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
-    commentQw.select("pictureId", "COUNT(*) AS cnt")
-            .in("pictureId", pictureIdSet)
-            .eq("isDelete", 0)
-            .groupBy("pictureId");
-    java.util.Map<Long, Long> commentCountMap = new java.util.HashMap<>();
-    for (java.util.Map<String, Object> row : pictureCommentMapper.selectMaps(commentQw)) {
-        Long pid = ((Number) row.get("pictureId")).longValue();
-        Long cnt = ((Number) row.get("cnt")).longValue();
-        commentCountMap.put(pid, cnt);
-    }
-
-    // 当前用户的已点赞集合
-    java.util.Set<Long> likedSet = new java.util.HashSet<>();
-    try {
-        User curUser = userService.getLoginUser(request);
-        if (curUser != null) {
-            java.util.List<PictureLike> likedList = pictureLikeMapper.selectList(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<PictureLike>()
-                            .eq(PictureLike::getUserId, curUser.getId())
-                            .in(PictureLike::getPictureId, pictureIdSet)
-                            .eq(PictureLike::getIsDelete, 0)
-            );
-            likedSet = likedList.stream().map(PictureLike::getPictureId).collect(java.util.stream.Collectors.toSet());
-        }
-    } catch (Exception ignored) {}
-
-    // 批量填充到 VO
-    for (PictureVO vo : pictureVOList) {
-        Long pid = vo.getId();
-        vo.setLikeCount(likeCountMap.getOrDefault(pid, 0L));
-        vo.setCommentCount(commentCountMap.getOrDefault(pid, 0L));
-        vo.setHasLiked(likedSet.contains(pid));
-    }
-
-    pictureVOPage.setRecords(pictureVOList);
-    return pictureVOPage;
-}
 
 
     @Override
@@ -636,20 +610,13 @@ public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRe
             return new Page<>(current, pageSize);
         }
         // 1. 查询用户点赞的所有 picture_id，并按点赞时间倒序排序
-        List<PictureLike> pictureLikeList = pictureLikeMapper.selectList(
-                new QueryWrapper<PictureLike>()
-                        .select("pictureId")
-                        .eq("userId", userId)
-                        .orderByDesc("createTime")
-        );
+        List<PictureLike> pictureLikeList = pictureLikeMapper.selectList(new QueryWrapper<PictureLike>().select("pictureId").eq("userId", userId).orderByDesc("createTime"));
 
         if (CollUtil.isEmpty(pictureLikeList)) {
             return new Page<>(current, pageSize);
         }
 
-        List<Long> pictureIds = pictureLikeList.stream()
-                .map(PictureLike::getPictureId)
-                .collect(Collectors.toList());
+        List<Long> pictureIds = pictureLikeList.stream().map(PictureLike::getPictureId).collect(Collectors.toList());
 
         // 2. 根据 picture_id 查询图片信息
         Page<Picture> page = new Page<>(current, pageSize);
@@ -660,6 +627,93 @@ public Page<PictureVO> getPictureVOPage(Page<Picture> picturePage, HttpServletRe
         queryWrapper.orderBy(true, true, "FIELD(id, " + idsStr + ")");
 
         return this.page(page, queryWrapper);
+    }
+
+    @Override
+    public long countMyUpload(Long userId) {
+        if (userId == null) return 0L;
+        return this.lambdaQuery().eq(Picture::getUserId, userId).eq(Picture::getIsDelete, 0).count();
+    }
+
+    @Override
+    public long countLikesReceived(Long userId) {
+        if (userId == null) return 0L;
+        QueryWrapper<PictureLike> qw = new QueryWrapper<>();
+        qw.eq("isDelete", 0).inSql("pictureId", "SELECT id FROM picture WHERE userId = " + userId + " AND isDelete = 0");
+        return pictureLikeMapper.selectCount(qw);
+    }
+
+    @Override
+    public long countMyLikesGiven(Long userId) {
+        if (userId == null) return 0L;
+
+        QueryWrapper<PictureLike> qw = new QueryWrapper<>();
+        qw.eq("userId", userId).eq("isDelete", 0);
+        return pictureLikeMapper.selectCount(qw);
+    }
+
+    @Override
+    public long countMyComments(Long userId) {
+        if (userId == null) return 0L;
+        return pictureCommentMapper.selectCount(new LambdaQueryWrapper<PictureComment>().eq(PictureComment::getUserId, userId).eq(PictureComment::getIsDelete, 0));
+    }
+
+    @Override
+    public java.util.Map<String, Object> stats7d(Long userId) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) return res;
+        LocalDate today = LocalDate.now();
+        List<String> days = new java.util.ArrayList<>();
+        for (int i = 6; i >= 0; i--) {
+            days.add(today.minusDays(i).toString());
+        }
+        // 上传数（按天）
+        Map<String, Long> uploadMap = new HashMap<>();
+        {
+            QueryWrapper<Picture> qw = new QueryWrapper<>();
+            qw.select("DATE(createTime) d, COUNT(*) c").eq("userId", userId).eq("isDelete", 0).ge("createTime", java.sql.Timestamp.valueOf(java.time.LocalDateTime.now().minusDays(6).withHour(0).withMinute(0).withSecond(0).withNano(0))).groupBy("DATE(createTime)");
+            for (java.util.Map<String, Object> row : this.baseMapper.selectMaps(qw)) {
+                String d = String.valueOf(row.get("d"));
+                Long c = ((Number) row.get("c")).longValue();
+                uploadMap.put(d, c);
+            }
+        }
+        // 收到的点赞（按天）
+        Map<String, Long> likeRecvMap = new HashMap<>();
+        {
+            QueryWrapper<PictureLike> qw = new QueryWrapper<>();
+            qw.select("DATE(createTime) d, COUNT(*) c").inSql("pictureId", "SELECT id FROM picture WHERE userId = " + userId + " AND isDelete = 0").eq("isDelete", 0).ge("createTime", java.sql.Timestamp.valueOf(java.time.LocalDateTime.now().minusDays(6).withHour(0).withMinute(0).withSecond(0).withNano(0))).groupBy("DATE(createTime)");
+            for (java.util.Map<String, Object> row : pictureLikeMapper.selectMaps(qw)) {
+                String d = String.valueOf(row.get("d"));
+                Long c = ((Number) row.get("c")).longValue();
+                likeRecvMap.put(d, c);
+            }
+        }
+        // 我发表的评论（按天）
+        Map<String, Long> commentMadeMap = new HashMap<>();
+        {
+            QueryWrapper<PictureComment> qw = new QueryWrapper<>();
+            qw.select("DATE(createTime) d, COUNT(*) c").eq("userId", userId).eq("isDelete", 0).ge("createTime", java.sql.Timestamp.valueOf(java.time.LocalDateTime.now().minusDays(6).withHour(0).withMinute(0).withSecond(0).withNano(0))).groupBy("DATE(createTime)");
+            for (java.util.Map<String, Object> row : pictureCommentMapper.selectMaps(qw)) {
+                String d = String.valueOf(row.get("d"));
+                Long c = ((Number) row.get("c")).longValue();
+                commentMadeMap.put(d, c);
+            }
+        }
+        // 输出按天数组（缺省补0）
+        List<Long> uploadArr = new ArrayList<>();
+        List<Long> likeRecvArr = new ArrayList<>();
+        List<Long> commentMadeArr = new ArrayList<>();
+        for (String d : days) {
+            uploadArr.add(uploadMap.getOrDefault(d, 0L));
+            likeRecvArr.add(likeRecvMap.getOrDefault(d, 0L));
+            commentMadeArr.add(commentMadeMap.getOrDefault(d, 0L));
+        }
+        res.put("days", days);
+        res.put("dailyUpload", uploadArr);
+        res.put("dailyLikeReceived", likeRecvArr);
+        res.put("dailyCommentMade", commentMadeArr);
+        return res;
     }
 }
 

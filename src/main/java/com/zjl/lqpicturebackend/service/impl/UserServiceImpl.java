@@ -3,6 +3,7 @@ package com.zjl.lqpicturebackend.service.impl;
 import cn.dev33.satoken.stp.SaTokenInfo;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.RandomUtil;
@@ -31,6 +32,8 @@ import javax.mail.internet.MimeMessage;
 import javax.servlet.http.HttpServletRequest;
 import org.springframework.web.multipart.MultipartFile;
 import com.zjl.lqpicturebackend.manager.MultipartFileUploader;
+import com.zjl.lqpicturebackend.manager.CosManager;
+import com.zjl.lqpicturebackend.config.CosClientConfig;
 import com.zjl.lqpicturebackend.model.dto.file.UploadPictureResult;
 
 import java.util.ArrayList;
@@ -59,6 +62,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Resource
     private MultipartFileUploader multipartFileUploader;
+
+    @Resource
+    private CosManager cosManager;
+
+    @Resource
+    private CosClientConfig cosClientConfig;
 
 
 
@@ -204,26 +213,24 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             if (!StpUtil.isLogin()) {
                 throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
             }
-            
+
             // 从Session中获取用户信息
             User userObj = (User) StpUtil.getTokenSession().get(USER_LOGIN_STATE);
             if (userObj == null) {
                 // 如果Session中没有用户信息，
-                System.out.println("Session中没有用户信息,重新获取用户信息");
                 Object loginId = StpUtil.getLoginId();
                 if (loginId != null) {
-                    userObj = this.getById((Long) loginId);
+                    userObj = this.getById(Long.valueOf(loginId.toString()));
                     if (userObj != null) {
                         // 重新存储到Session中
                         StpUtil.getTokenSession().set(USER_LOGIN_STATE, userObj);
                     }
                 }
             }
-            
+
             if (userObj == null) {
                 throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "获取用户信息失败");
             }
-            System.out.println("已经获取用户信息");
             return userObj;
         } catch (Exception e) {
             if (e instanceof BusinessException) {
@@ -284,12 +291,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public boolean sendEmailCode(String email) {
-        // TODO: 实现邮箱验证码发送功能
         // 1. 验证邮箱格式
         if (StrUtil.isBlank(email) || !email.contains("@")) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式不正确");
         }
-        
         try {
             // 2. 生成6位随机验证码
             String code = RandomUtil.randomNumbers(6);
@@ -384,21 +389,77 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
         }
-        String uploadPathPrefix = String.format("/avatar/%s/", loginUser.getId());
-        UploadPictureResult uploadResult = multipartFileUploader.upload(file, uploadPathPrefix);
-
+        
+        // 获取用户当前信息
         User user = this.getById(loginUser.getId());
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "用户不存在");
         }
+        this.deleteOldUserAvatar(user);
+        // 上传新头像
+        String uploadPathPrefix = String.format("/avatar/%s/", loginUser.getId());
+        UploadPictureResult uploadResult = multipartFileUploader.upload(file, uploadPathPrefix);
+
+        // 更新用户头像
         user.setUserAvatar(uploadResult.getUrl());
         boolean updated = this.updateById(user);
         if (!updated) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "更新头像失败");
         }
+
         // 同步登录态中的用户信息
         StpUtil.getTokenSession().set(USER_LOGIN_STATE, user);
         return uploadResult.getUrl();
+    }
+
+    private void deleteOldUserAvatar(User user) {
+        // 删除旧头像及其所有关联文件（如果存在）
+        String oldAvatar = user.getUserAvatar();
+        if (StrUtil.isNotBlank(oldAvatar)) {
+            try {
+                // 从 URL 中提取 COS 对象键（key）
+                String cosHost = cosClientConfig.getHost();
+                if (oldAvatar.startsWith(cosHost)) {
+                    String oldKey = oldAvatar.substring(cosHost.length());
+                    log.info("开始清理用户 {} 的旧头像，原始 key: {}", user.getId(), oldKey);
+
+                    // 1. 删除原始图片
+                    deleteFileQuietly(oldKey, "原始头像", user.getId());
+
+                    // 2. 删除 webp 文件（根据 CosManager 的逻辑）
+                    // webpKey = FileUtil.mainName(key) + ".webp"
+                    // FileUtil.mainName() 会去掉扩展名但保留路径
+                    String webpKey = FileUtil.mainName(oldKey) + ".webp";
+                    deleteFileQuietly(webpKey, "webp压缩文件", user.getId());
+
+                    // 3. 删除缩略图文件（根据 CosManager 的逻辑）
+                    // thumbnailKey = FileUtil.mainName(key) + "_thumbnail." + FileUtil.getSuffix(key)
+                    String thumbnailKey = FileUtil.mainName(oldKey) + "_thumbnail." + FileUtil.getSuffix(oldKey);
+                    deleteFileQuietly(thumbnailKey, "缩略图文件", user.getId());
+
+                    log.info("已完成用户 {} 旧头像文件清理", user.getId());
+                }
+            } catch (Exception e) {
+                log.error("删除旧头像失败", e);
+                // 删除失败不影响新头像上传，继续执行
+            }
+        }
+    }
+
+    /**
+     * 静默删除 COS 对象文件（删除失败不抛异常）
+     * 
+     * @param key COS 对象键
+     * @param fileType 文件类型描述（用于日志）
+     * @param userId 用户ID（用于日志）
+     */
+    private void deleteFileQuietly(String key, String fileType, Long userId) {
+        try {
+            cosManager.deleteObject(key);
+            log.info("已删除用户 {} 的{}: {}", userId, fileType, key);
+        } catch (Exception e) {
+            log.warn("删除用户 {} 的{}失败: {}, 原因: {}", userId, fileType, key, e.getMessage());
+        }
     }
     
     /**
@@ -460,6 +521,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         );
     }
 
+    @Override
+    public User getLoginUserByToken(String token) {
+        Object loginId = StpUtil.getLoginIdByToken(token);
+        if (loginId == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "token无效");
+        }
+        User user = this.getById(Long.parseLong(loginId.toString()));
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户不存在");
+        }
+        return user;
+    }
 }
 
 

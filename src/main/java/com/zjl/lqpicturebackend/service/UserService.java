@@ -107,4 +107,11 @@ public interface UserService extends IService<User> {
      * @return 头像访问URL
      */
     String uploadUserAvatar(MultipartFile file, User loginUser);
+
+    /**
+     * 根据token获取登录用户
+     * @param token
+     * @return
+     */
+    User getLoginUserByToken(String token);
 }

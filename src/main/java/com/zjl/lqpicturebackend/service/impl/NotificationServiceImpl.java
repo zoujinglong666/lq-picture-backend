@@ -33,6 +33,8 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
     private UserService userService;
     @Resource
     private SseEmitterServer sseEmitterServer;
+    @Resource
+    private com.zjl.lqpicturebackend.mapper.PictureCommentMapper pictureCommentMapper;
 
     @Override
     public void createForLike(Long pictureId, Long actorUserId) {
@@ -71,7 +73,19 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
         n.setType("COMMENT");
         n.setRefId(commentId);
         n.setPictureId(pictureId);
-        n.setContent(String.format("用户 @%s 评论了你的图片《%s》", actor.getUserName(), p.getName()));
+        // 读取评论内容用于展示
+        String commentText = null;
+        if (commentId != null) {
+            com.zjl.lqpicturebackend.model.PictureComment c = pictureCommentMapper.selectById(commentId);
+            if (c != null && c.getIsDelete() != null && c.getIsDelete() == 0) {
+                commentText = c.getContent();
+            }
+        }
+        if (commentText == null) {
+            n.setContent(String.format("用户 @%s 评论了你的图片《%s》", actor.getUserName(), p.getName()));
+        } else {
+            n.setContent(String.format("用户 @%s 评论了你的图片《%s》\\n评论内容：%s", actor.getUserName(), p.getName(), commentText));
+        }
         n.setReadStatus(0);
         n.setCreateTime(new Date());
         n.setIsDelete(0);
@@ -107,11 +121,20 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
         if (loginUser == null) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "未登录");
         }
+
+
         Page<Notification> page = this.lambdaQuery()
                 .eq(Notification::getUserId, loginUser.getId())
                 .eq(Notification::getIsDelete, 0)
+                .orderByAsc(Notification::getReadStatus)
                 .orderByDesc(Notification::getCreateTime)
                 .page(new Page<>(current, size));
+
+//        Page<Notification> page = this.lambdaQuery()
+//                .eq(Notification::getUserId, loginUser.getId())
+//                .eq(Notification::getIsDelete, 0)
+//                .orderByDesc(Notification::getCreateTime)
+//                .page(new Page<>(current, size));
 
         Page<NotificationVO> voPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
         List<Notification> records = page.getRecords();
@@ -198,6 +221,28 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
                 .eq(Notification::getUserId, loginUser.getId())
                 .eq(Notification::getIsDelete, 0)
                 .set(Notification::getReadStatus, 1)
+                .update();
+    }
+
+    @Override
+    public long countUnread(User loginUser) {
+        if (loginUser == null) {
+            return 0;
+        }
+        return this.lambdaQuery()
+                .eq(Notification::getUserId, loginUser.getId())
+                .eq(Notification::getReadStatus, 0)
+                .eq(Notification::getIsDelete, 0)
+                .count();
+    }
+
+    @Override
+    public boolean deleteNotification(Long id, User loginUser) {
+
+        return this.lambdaUpdate()
+                .eq(Notification::getId, id)
+                .eq(Notification::getUserId, loginUser.getId())
+                .set(Notification::getIsDelete, 1)
                 .update();
     }
 }

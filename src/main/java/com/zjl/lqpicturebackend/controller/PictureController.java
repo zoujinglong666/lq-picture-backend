@@ -1,4 +1,5 @@
 package com.zjl.lqpicturebackend.controller;
+
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -34,10 +35,8 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.Objects;
 
 
 /**
@@ -62,12 +61,9 @@ public class PictureController {
     /**
      * 本地缓存
      */
-    private final Cache<String, String> LOCAL_CACHE = Caffeine.newBuilder()
-            .initialCapacity(1024)
-            .maximumSize(10_000L)
+    private final Cache<String, String> LOCAL_CACHE = Caffeine.newBuilder().initialCapacity(1024).maximumSize(10_000L)
             // 缓存 5 分钟后移除
-            .expireAfterWrite(Duration.ofMinutes(5))
-            .build();
+            .expireAfterWrite(Duration.ofMinutes(5)).build();
 
     @PostMapping("/upload")
     public BaseResponse<PictureVO> uploadPicture(@RequestPart("file") MultipartFile multipartFile, PictureUploadRequest pictureUploadRequest, HttpServletRequest request) {
@@ -95,8 +91,7 @@ public class PictureController {
     }
 
     @PostMapping("/delete")
-    public BaseResponse<Boolean> deletePicture(@RequestBody DeleteRequest deleteRequest
-            , HttpServletRequest request) {
+    public BaseResponse<Boolean> deletePicture(@RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -112,40 +107,38 @@ public class PictureController {
         long current = pictureQueryRequest.getCurrent();
         long size = pictureQueryRequest.getPageSize();
         // 查询数据库
-        Page<Picture> picturePage = pictureService.page(new Page<>(current, size),
-                pictureService.getQueryWrapper(pictureQueryRequest));
+        Page<Picture> picturePage = pictureService.page(new Page<>(current, size), pictureService.getQueryWrapper(pictureQueryRequest));
         // 返回封装类（包含 likeCount / commentCount / hasLiked）
         return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
     }
+
     @PostMapping("/list/page/vo")
-    public BaseResponse<Page<PictureVO>> listPictureVOByPage(@RequestBody PictureQueryRequest pictureQueryRequest,
-                                                             HttpServletRequest request) {
+    public BaseResponse<Page<PictureVO>> listPictureVOByPage(@RequestBody PictureQueryRequest pictureQueryRequest, HttpServletRequest request) {
         long current = pictureQueryRequest.getCurrent();
         long size = pictureQueryRequest.getPageSize();
         // 限制爬虫
         ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
         Long spaceId = pictureQueryRequest.getSpaceId();
-        if(spaceId==null){
+        if (spaceId == null) {
             // 公开图库
             // 普通用户默认只能看到审核通过的数据
             pictureQueryRequest.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
             pictureQueryRequest.setNullSpaceId(true);
-        }else {
+        } else {
             // 私有图库
             // 管理员可以看到所有数据
             User loginUser = userService.getLoginUser(request);
             Space space = spaceService.getById(spaceId);
-            if (space == null){
+            if (space == null) {
                 throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "空间不存在");
             }
-            if(!loginUser.getId().equals(space.getUserId())){
+            if (!loginUser.getId().equals(space.getUserId())) {
                 // 非空间所有者不能查看私有图库
                 throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限查看私有图库");
             }
         }
         // 查询数据库
-        Page<Picture> picturePage = pictureService.page(new Page<>(current, size),
-                pictureService.getQueryWrapper(pictureQueryRequest));
+        Page<Picture> picturePage = pictureService.page(new Page<>(current, size), pictureService.getQueryWrapper(pictureQueryRequest));
         // 获取封装类
         return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
     }
@@ -158,8 +151,7 @@ public class PictureController {
      * @return 图片分页列表
      */
     @PostMapping("/review/list/page/vo")
-    public BaseResponse<Page<PictureVO>> listReviewPictureVOByPage(@RequestBody(required = false) PictureQueryRequest pictureQueryRequest,
-                                                               HttpServletRequest request) {
+    public BaseResponse<Page<PictureVO>> listReviewPictureVOByPage(@RequestBody(required = false) PictureQueryRequest pictureQueryRequest, HttpServletRequest request) {
         if (pictureQueryRequest == null) {
             pictureQueryRequest = new PictureQueryRequest();
         }
@@ -175,8 +167,7 @@ public class PictureController {
         // 本接口不返回审核通过的图片
         queryWrapper.ne("reviewStatus", PictureReviewStatusEnum.PASS.getValue());
         // 查询数据库
-        Page<Picture> picturePage = pictureService.page(new Page<>(current, size),
-                queryWrapper);
+        Page<Picture> picturePage = pictureService.page(new Page<>(current, size), queryWrapper);
         // 获取封装类
         return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
     }
@@ -184,8 +175,7 @@ public class PictureController {
 
     @Deprecated
     @PostMapping("/list/page/vo/cache")
-    public BaseResponse<Page<PictureVO>> listPictureVOByPageWithCache(@RequestBody PictureQueryRequest pictureQueryRequest,
-                                                                      HttpServletRequest request) {
+    public BaseResponse<Page<PictureVO>> listPictureVOByPageWithCache(@RequestBody PictureQueryRequest pictureQueryRequest, HttpServletRequest request) {
         long current = pictureQueryRequest.getCurrent();
         long size = pictureQueryRequest.getPageSize();
         // 限制爬虫
@@ -214,8 +204,7 @@ public class PictureController {
             return ResultUtils.success(cachedPage);
         }
         // 3. 查询数据库
-        Page<Picture> picturePage = pictureService.page(new Page<>(current, size),
-                pictureService.getQueryWrapper(pictureQueryRequest));
+        Page<Picture> picturePage = pictureService.page(new Page<>(current, size), pictureService.getQueryWrapper(pictureQueryRequest));
         Page<PictureVO> pictureVOPage = pictureService.getPictureVOPage(picturePage, request);
         // 4. 更新缓存
         // 更新 Redis 缓存
@@ -249,16 +238,17 @@ public class PictureController {
         pictureTagCategory.setCategoryList(categoryList);
         return ResultUtils.success(pictureTagCategory);
     }
+
     /**
      * 根据 id 获取图片（封装类）
      */
     @GetMapping("/get/vo")
     public BaseResponse<PictureVO> getPictureVOById(long id, HttpServletRequest request) {
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
-        
+
         // 必须登录才能查看图片详情
         User loginUser = userService.getLoginUser(request);
-        
+
         // 查询数据库
         Picture picture = pictureService.getById(id);
         ThrowUtils.throwIf(picture == null, ErrorCode.NOT_FOUND_ERROR);
@@ -269,10 +259,11 @@ public class PictureController {
             // 私有空间图片，校验图片权限
             pictureService.checkPictureAuth(loginUser, picture);
         }
-        
+
         PictureVO pictureVO = pictureService.getPictureVO(picture, loginUser);
         return ResultUtils.success(pictureVO);
     }
+
     @PostMapping("/review")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> doPictureReview(@RequestBody PictureReviewRequest pictureReviewRequest, HttpServletRequest request) {
@@ -286,8 +277,7 @@ public class PictureController {
 
     @PostMapping("/update")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Boolean> updatePicture(@RequestBody PictureUpdateRequest pictureUpdateRequest,
-                                               HttpServletRequest request) {
+    public BaseResponse<Boolean> updatePicture(@RequestBody PictureUpdateRequest pictureUpdateRequest, HttpServletRequest request) {
         if (pictureUpdateRequest == null || pictureUpdateRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -315,47 +305,40 @@ public class PictureController {
      * 我的收藏（我点赞过的图片）分页列表
      * 与已有分页响应风格一致，返回 PictureVO Page
      */
- @GetMapping("/my/likes")
-public BaseResponse<Page<PictureVO>> listMyLikedPictures(
-        @RequestParam(defaultValue = "1") int current,
-        @RequestParam(defaultValue = "10") int pageSize,
-        HttpServletRequest request) {
+    @GetMapping("/my/likes")
+    public BaseResponse<Page<PictureVO>> listMyLikedPictures(@RequestParam(defaultValue = "1") int current, @RequestParam(defaultValue = "10") int pageSize, HttpServletRequest request) {
 
-    // 参数校验
-    if (current < 1 || pageSize < 1 || pageSize > 20) {
-        throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+        // 参数校验
+        if (current < 1 || pageSize < 1 || pageSize > 20) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+        }
+
+        User loginUser = userService.getLoginUser(request);
+
+        PictureQueryRequest query = new PictureQueryRequest();
+        query.setCurrent(current);
+        query.setPageSize(pageSize);
+        query.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
+        query.setLikedByUser(true);
+        query.setUserId(loginUser.getId());
+
+        Page<Picture> picturePage = pictureService.page(new Page<>(current, pageSize), pictureService.getQueryWrapper(query));
+        return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
     }
 
-    User loginUser = userService.getLoginUser(request);
 
-    PictureQueryRequest query = new PictureQueryRequest();
-    query.setCurrent(current);
-    query.setPageSize(pageSize);
-    query.setReviewStatus(PictureReviewStatusEnum.PASS.getValue());
-    query.setLikedByUser(true);
-    query.setUserId(loginUser.getId());
+    @GetMapping("/my/likes/v2")
+    public BaseResponse<Page<PictureVO>> listMyLikedPicturesV2(@RequestParam(defaultValue = "1") int current, @RequestParam(defaultValue = "10") int pageSize, HttpServletRequest request) {
 
-    Page<Picture> picturePage = pictureService.page(new Page<>(current, pageSize),
-            pictureService.getQueryWrapper(query));
-    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
-}
+        // 参数校验
+        if (current < 1 || pageSize < 1 || pageSize > 20) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+        }
 
-
-@GetMapping("/my/likes/v2")
-public BaseResponse<Page<PictureVO>> listMyLikedPicturesV2(
-        @RequestParam(defaultValue = "1") int current,
-        @RequestParam(defaultValue = "10") int pageSize,
-        HttpServletRequest request) {
-
-    // 参数校验
-    if (current < 1 || pageSize < 1 || pageSize > 20) {
-        throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+        User loginUser = userService.getLoginUser(request);
+        Page<Picture> picturePage = pictureService.listMyLikedPicturesByMyBatis(current, pageSize, loginUser.getId());
+        return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
     }
-
-    User loginUser = userService.getLoginUser(request);
-    Page<Picture> picturePage = pictureService.listMyLikedPicturesByMyBatis(current, pageSize, loginUser.getId());
-    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
-}
 
 
 //@GetMapping("/my/likes/v3")
@@ -374,21 +357,35 @@ public BaseResponse<Page<PictureVO>> listMyLikedPicturesV2(
 //    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
 //}
 
-@GetMapping("/my/likes/v4")
-public BaseResponse<Page<PictureVO>> listMyLikedPicturesV4(
-        @RequestParam(defaultValue = "1") int current,
-        @RequestParam(defaultValue = "10") int pageSize,
-        HttpServletRequest request) {
+    @GetMapping("/my/likes/v4")
+    public BaseResponse<Page<PictureVO>> listMyLikedPicturesV4(@RequestParam(defaultValue = "1") int current, @RequestParam(defaultValue = "10") int pageSize, HttpServletRequest request) {
 
-    // 参数校验
-    if (current < 1 || pageSize < 1 || pageSize > 20) {
-        throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+        // 参数校验
+        if (current < 1 || pageSize < 1 || pageSize > 20) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "分页参数不合法");
+        }
+
+        User loginUser = userService.getLoginUser(request);
+        Page<Picture> picturePage = pictureService.listMyLikedPicturesV4(current, pageSize, loginUser.getId());
+        return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
     }
 
-    User loginUser = userService.getLoginUser(request);
-    Page<Picture> picturePage = pictureService.listMyLikedPicturesV4(current, pageSize, loginUser.getId());
-    return ResultUtils.success(pictureService.getPictureVOPage(picturePage, request));
-}
-
+    @GetMapping("/stats/my")
+    public BaseResponse<Map<String, Object>> myStats(HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        Long userId = loginUser.getId();
+        long uploadCount = pictureService.countMyUpload(userId);
+        long likeReceivedCount = pictureService.countLikesReceived(userId);
+        long myLikedCount = pictureService.countMyLikesGiven(userId);
+        long myCommentCount = pictureService.countMyComments(userId);
+        Map<String, Object> data = new HashMap<>();
+        data.put("uploadCount", uploadCount);
+        data.put("likeReceivedCount", likeReceivedCount);
+        data.put("myLikedCount", myLikedCount);
+        data.put("myCommentCount", myCommentCount);
+        // 7天趋势
+        data.putAll(pictureService.stats7d(userId));
+        return ResultUtils.success(data);
+    }
 
 }
