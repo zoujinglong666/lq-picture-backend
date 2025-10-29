@@ -372,7 +372,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
         java.util.Set<Long> pictureIdSet = pictureList.stream().map(Picture::getId).collect(java.util.stream.Collectors.toSet());
 
         // 点赞数聚合
-        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureLike> likeQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        QueryWrapper<PictureLike> likeQw = new QueryWrapper<>();
         likeQw.select("pictureId", "COUNT(*) AS cnt").in("pictureId", pictureIdSet).eq("isDelete", 0).groupBy("pictureId");
         java.util.Map<Long, Long> likeCountMap = new java.util.HashMap<>();
         for (java.util.Map<String, Object> row : pictureLikeMapper.selectMaps(likeQw)) {
@@ -382,7 +382,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
         }
 
         // 评论数聚合
-        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PictureComment> commentQw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        QueryWrapper<PictureComment> commentQw = new QueryWrapper<>();
         commentQw.select("pictureId", "COUNT(*) AS cnt").in("pictureId", pictureIdSet).eq("isDelete", 0).groupBy("pictureId");
         java.util.Map<Long, Long> commentCountMap = new java.util.HashMap<>();
         for (java.util.Map<String, Object> row : pictureCommentMapper.selectMaps(commentQw)) {
@@ -396,7 +396,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
         try {
             User curUser = userService.getLoginUser(request);
             if (curUser != null) {
-                java.util.List<PictureLike> likedList = pictureLikeMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<PictureLike>().eq(PictureLike::getUserId, curUser.getId()).in(PictureLike::getPictureId, pictureIdSet).eq(PictureLike::getIsDelete, 0));
+                java.util.List<PictureLike> likedList = pictureLikeMapper.selectList(new LambdaQueryWrapper<PictureLike>().eq(PictureLike::getUserId, curUser.getId()).in(PictureLike::getPictureId, pictureIdSet).eq(PictureLike::getIsDelete, 0));
                 likedSet = likedList.stream().map(PictureLike::getPictureId).collect(java.util.stream.Collectors.toSet());
             }
         } catch (Exception ignored) {
